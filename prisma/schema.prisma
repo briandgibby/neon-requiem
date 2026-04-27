@@ -1,0 +1,363 @@
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["driverAdapters"]
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Account {
+  id           String      @id @default(cuid())
+  username     String      @unique
+  email        String      @unique
+  passwordHash String
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+  characters   Character[]
+
+  @@map("accounts")
+}
+
+model Character {
+  id        String  @id @default(cuid())
+  accountId String
+  account   Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  name          String
+  faction       String
+  race          String
+  className     String
+  streetDocPath String?
+
+  level            Int @default(1)
+  experiencePoints Int @default(0)
+  nuyen            Int @default(0)
+
+  body      Int
+  agility   Int
+  dexterity Int
+  strength  Int
+  logic     Int
+  intuition Int
+  willpower Int
+  charisma  Int
+
+  biosync  Int
+  luck     Int
+  luckPool Int
+
+  magic     Int?
+  resonance Int?
+  
+  // Technomancer "Natural Deck" stats
+  resAttack    Int? @default(0)
+  resSleaze    Int? @default(0)
+  resDataProc  Int? @default(0)
+  resFirewall  Int? @default(0)
+
+  mentorSpirit String?
+
+  masteryCQC       Int @default(0)
+  masteryEdge      Int @default(0)
+  masteryImpact    Int @default(0)
+  masteryPistol    Int @default(0)
+  masteryRifle     Int @default(0)
+  masteryAutomatic Int @default(0)
+  masteryRigging   Int @default(0)
+  masterySummoning Int @default(0)
+
+  currentRoomId String?
+  currentRoom   Room?   @relation(fields: [currentRoomId], references: [id])
+
+  currentHp Int @default(100)
+  maxHp     Int @default(100)
+  currentStun Int @default(100)
+  maxStun     Int @default(100)
+  currentMana Int @default(100)
+  maxMana     Int @default(100)
+  manaRegenRate Int @default(5) // Mana restored per regen tick
+  manaRegenBuff Int @default(0) // Remaining ticks of reagent HoT
+  armorValue Int @default(0)
+  biofeedbackBuffer Int @default(0) // Technomancer buff resistance
+  
+  deathSicknessUntil DateTime? // Timestamp until which death sickness applies
+  maxInventorySlots  Int       @default(10) // Calculated based on stats
+
+  hasValidSIN       Boolean @default(false)
+  disguiseIdentity  String? // Active impersonation
+  reputationCorp    Int     @default(0)
+  reputationShadow  Int     @default(0)
+
+  areaKnowledge     String[] // Unlocked districts/maps
+
+  isJackedIn   Boolean @default(false)
+  activeNodeId String?
+  activeNode   MatrixNode? @relation(fields: [activeNodeId], references: [id])
+  
+  activeAuraId String?
+  activeAura   AdeptPower? @relation("ActiveAura", fields: [activeAuraId], references: [id])
+
+  inventory    InventoryItem[]
+  equippedDeckId String?
+
+  auditLogs    AuditLog[]
+  ledMissions  ActiveMission[] @relation("MissionLeader")
+
+  isCreationComplete Boolean  @default(false)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@unique([accountId, name])
+  @@map("characters")
+}
+
+model Spell {
+  id        String   @id @default(cuid())
+  slug      String   @unique
+  name      String
+  type      String   // COMBAT, ILLUSION, HEAL, UTILITY
+  tradition String   // HERMETIC, SHAMANIC, ANY
+  apCost    Int      @default(2)
+  manaCost  Int
+  cooldown  Int      @default(0) // In server ticks
+  description String
+
+  @@map("spells")
+}
+
+model AdeptPower {
+  id        String   @id @default(cuid())
+  slug      String   @unique
+  name      String
+  type      String   // SELF, AURA
+  apCost    Int      @default(1)
+  manaCost  Int      @default(0) // Or sustain cost
+  duration  Int?     // null if toggled/permanent
+  description String
+
+  activeInCharacters Character[] @relation("ActiveAura")
+
+  @@map("adept_powers")
+}
+
+model Zone {
+  id             String @id @default(cuid())
+  slug           String @unique
+  name           String
+  securityRating String
+  rooms          Room[]
+
+  @@map("zones")
+}
+
+model Room {
+  id             String  @id @default(cuid())
+  slug           String  @unique
+  zoneId         String
+  zone           Zone    @relation(fields: [zoneId], references: [id])
+  name           String
+  description    String
+  securityRating String?
+  isMatrixNode   Boolean @default(false)
+  exits          Json?
+  npcSpawnTable  String?
+  factionOwner   String?
+  baseDisposition String? @default("NEUTRAL") // HOSTILE, SUSPICIOUS, NEUTRAL, FRIENDLY
+  
+  isClean        Boolean   @default(true)
+  lastCombatAt   DateTime?
+
+  isPOI          Boolean @default(false)
+  poiCategory    String? // SHOP, CLINIC, BAR, HUB
+  gridX          Int?
+  gridY          Int?
+
+  shopItems  ShopItem[]
+  matrixNode MatrixNode?
+  characters Character[]
+  combatSession CombatSession?
+
+  @@map("rooms")
+}
+
+model CombatSession {
+  id                        String   @id @default(cuid())
+  roomId                    String   @unique
+  room                      Room     @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  securityRating            String
+  tick                      Int      @default(0)
+  alarmState                String   @default("GREEN")
+  turnsUntilReinforcements  Int?
+  backupCalled              Boolean  @default(false)
+  
+  participants              Json     // Store as Record<string, CombatParticipant>
+  
+  createdAt                 DateTime @default(now())
+  updatedAt                 DateTime @updatedAt
+
+  @@map("combat_sessions")
+}
+
+model MobTemplate {
+  id                String   @id @default(cuid())
+  slug              String   @unique
+  name              String
+  description       String?
+  level             Int      @default(1)
+  
+  // Stats
+  body              Int
+  agility           Int
+  dexterity         Int
+  strength          Int
+  logic             Int
+  intuition         Int
+  willpower         Int
+  charisma          Int
+  
+  // Combat Stats
+  maxHp             Int
+  maxAp             Int      @default(6)
+  armorValue        Int      @default(0)
+  
+  // Masteries
+  masteryCQC        Int      @default(0)
+  masteryPistol     Int      @default(0)
+  masteryRifle      Int      @default(0)
+  masteryAutomatic  Int      @default(0)
+
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@map("mob_templates")
+}
+
+model MatrixNode {
+  id            String  @id @default(cuid())
+  slug          String  @unique
+  name          String
+  description   String
+  securityLevel Int     @default(1)
+  hostType      String  @default("public") // public, private, corporate, military
+  alertLevel    String  @default("GREEN")  // GREEN, YELLOW, RED
+  
+  roomId        String  @unique
+  room          Room    @relation(fields: [roomId], references: [id])
+
+  characters    Character[]
+  activeIC      IntCountermeasure[]
+
+  @@map("matrix_nodes")
+}
+
+model Item {
+  id          String   @id @default(cuid())
+  slug        String   @unique
+  name        String
+  description String
+  type        String   // DECK, PROGRAM, WEAPON, ARMOR, CONSUMABLE
+  rarity      String   @default("common")
+  slots       Int      @default(1)
+  equipSlot   String?  // HAND_1, HAND_2, BOTH_HANDS, ARMOR, HEAD, BODY
+  
+  // JSON field for varying stats (e.g., deck stats {attack, sleaze...} or weapon stats)
+  stats       Json?
+  
+  inventoryItems InventoryItem[]
+  shopItems      ShopItem[]
+
+  @@map("items")
+}
+
+model ShopItem {
+  id     String @id @default(cuid())
+  roomId String
+  room   Room   @relation(fields: [roomId], references: [id])
+  itemId String
+  item   Item   @relation(fields: [itemId], references: [id])
+  price  Int
+  stock  Int    @default(-1) // -1 indicates infinite stock
+  
+  @@unique([roomId, itemId])
+  @@map("shop_items")
+}
+
+model InventoryItem {
+  id          String    @id @default(cuid())
+  characterId String
+  character   Character @relation(fields: [characterId], references: [id], onDelete: Cascade)
+  itemId      String
+  item        Item      @relation(fields: [itemId], references: [id])
+  
+  isEquipped  Boolean   @default(false)
+  corruptionLevel Int    @default(0) // 0: Clean, 1: Light, 2: Medium, 3: Heavy
+  quantity    Int       @default(1)
+
+  @@map("inventory_items")
+}
+
+model IntCountermeasure {
+  id          String     @id @default(cuid())
+  slug        String
+  name        String
+  type        String     // WHITE, GRAY, BLACK
+  nodeId      String
+  node        MatrixNode @relation(fields: [nodeId], references: [id])
+  
+  hp          Int
+  currentHp   Int
+  attack      Int
+  defense     Int
+  hardening   Int     @default(0) // ICE hardening/resistance stat
+
+  @@map("ice")
+}
+
+model AuditLog {
+  id          String   @id @default(cuid())
+  timestamp   DateTime @default(now())
+  category    String   // ITEM_DROP, TRANSACTION, EXPLOIT_FLAG, MISSION_PAYOUT
+  severity    String   // INFO, WARNING, CRITICAL
+  message     String
+  characterId String?
+  character   Character? @relation(fields: [characterId], references: [id])
+  metadata    Json?    // Contextual data like item slugs or amounts
+
+  @@map("audit_logs")
+}
+
+model MissionTemplate {
+  id              String   @id @default(cuid())
+  slug            String   @unique
+  name            String
+  type            String   // RETRIEVAL, EXTRACTION, COURIER, SABOTAGE, MATRIX, ASSASSINATION
+  description     String
+  baseDifficulty  Int      @default(1)
+  basePayout      Int      @default(1000)
+  requiredClasses Json?    // Array of class slugs
+
+  activeMissions  ActiveMission[]
+
+  @@map("mission_templates")
+}
+
+model ActiveMission {
+  id                String   @id @default(cuid())
+  templateId        String
+  template          MissionTemplate @relation(fields: [templateId], references: [id])
+  
+  partyId           String?  // Can be null for solo runs
+  leaderId          String
+  leader            Character @relation("MissionLeader", fields: [leaderId], references: [id])
+
+  status            String   @default("ACTIVE") // ACTIVE, COMPLETED, FAILED, SCRUBBED
+  seed              String
+  currentObjective  Int      @default(0)
+  targetData        Json?    // Stores generated layout and targets
+  
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@map("active_missions")
+}

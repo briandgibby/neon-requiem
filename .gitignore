@@ -1,0 +1,8 @@
+node_modules/
+dist/
+.env
+*.log
+.superpowers/
+.claude/
+.claude-flow/
+.swarm/
