@@ -100,13 +100,18 @@ async function main() {
 
   await prisma.room.upsert({
     where: { slug: 'shadow-black-market' },
-    update: {},
+    update: {
+      isPOI: true,
+      poiCategory: 'SHOP',
+    },
     create: {
       slug: 'shadow-black-market',
       zoneId: shadowZone.id,
       name: 'Black Market Alley',
       description: 'A narrow alleyway lined with vendors selling everything from illegal cyberdecks to street-grade stimulants.',
       securityRating: 'D',
+      isPOI: true,
+      poiCategory: 'SHOP',
       exits: {
         west: STARTING_ROOM_SHADOW,
       },
@@ -463,6 +468,35 @@ async function main() {
       masteryCQC: 0, masteryPistol: 0, masteryRifle: 0, masteryAutomatic: 8
     }
   });
+
+  console.log('Seeding Shop Inventories...');
+
+  const blackMarket = await prisma.room.findUnique({ where: { slug: 'shadow-black-market' } });
+  if (blackMarket) {
+    const shopItems = [
+      { slug: 'sony-c-series', price: 500 },
+      { slug: 'prog-armor', price: 150 },
+      { slug: 'medical-supplies', price: 50 },
+      { slug: 'reagents', price: 25 },
+      { slug: 'dart-pistol', price: 300 },
+    ];
+
+    for (const itemData of shopItems) {
+      const item = await prisma.item.findUnique({ where: { slug: itemData.slug } });
+      if (item) {
+        await prisma.shopItem.upsert({
+          where: { roomId_itemId: { roomId: blackMarket.id, itemId: item.id } },
+          update: { price: itemData.price },
+          create: {
+            roomId: blackMarket.id,
+            itemId: item.id,
+            price: itemData.price,
+            stock: -1 // Infinite stock for common items
+          }
+        });
+      }
+    }
+  }
 
   console.log('Seeding complete.');
 }

@@ -28,6 +28,7 @@ export interface MissionInstanceData {
 export interface AcceptMissionInput {
   templateSlug: string;
   characterId: string;
+  accountId: string;
   partyId?: string;
 }
 

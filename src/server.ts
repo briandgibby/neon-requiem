@@ -1,6 +1,5 @@
 import 'dotenv/config';
 import Fastify from 'fastify';
-import { createServer } from 'http';
 import { Pool } from 'pg';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from '@prisma/client';
@@ -18,8 +17,11 @@ import { WorldRepository } from './domains/world/world.repository';
 import { WorldService } from './domains/world/world.service';
 import { registerWorldRoutes } from './domains/world/world.routes';
 import { CombatRepository } from './domains/combat/combat.repository';
+import { MobRepository } from './domains/combat/mob.repository';
 import { CombatService } from './domains/combat/combat.service';
 import { registerCombatRoutes } from './domains/combat/combat.routes';
+import { MagicRepository } from './domains/magic/magic.repository';
+import { MagicService } from './domains/magic/magic.service';
 import { MatrixRepository } from './domains/matrix/matrix.repository';
 import { MatrixService } from './domains/matrix/matrix.service';
 import { registerMatrixRoutes } from './domains/matrix/matrix.routes';
@@ -27,19 +29,40 @@ import { MissionRepository } from './domains/mission/mission.repository';
 import { MissionService } from './domains/mission/mission.service';
 import { MissionGenerator } from './domains/mission/mission.generator';
 import { registerMissionRoutes } from './domains/mission/mission.routes';
+import { ShopRepository } from './domains/shop/shop.repository';
+import { ShopService } from './domains/shop/shop.service';
+import { registerShopRoutes } from './domains/shop/shop.routes';
 import { AuditLogger } from './engine/audit-logger';
 import type { AuthPayload } from './shared/types';
 import type { JwtSigner } from './domains/auth/auth.types';
 
+function requireEnv(name: string): string {
+  const value = process.env[name];
+  if (!value) throw new Error(`${name} environment variable is required`);
+  return value;
+}
+
+function getPort(): number {
+  const rawPort = process.env.PORT;
+  if (!rawPort) return 3000;
+
+  const port = Number(rawPort);
+  if (!Number.isInteger(port) || port <= 0 || port > 65535) {
+    throw new Error('PORT must be an integer between 1 and 65535');
+  }
+
+  return port;
+}
+
 async function bootstrap() {
-  const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+  const databaseUrl = requireEnv('DATABASE_URL');
+  const jwtSecret = requireEnv('JWT_SECRET');
+  const port = getPort();
+
+  const pool = new Pool({ connectionString: databaseUrl });
   const adapter = new PrismaPg(pool);
   const db = new PrismaClient({ adapter });
   const app = Fastify({ logger: true });
-  const httpServer = createServer(app.server);
-
-  const jwtSecret = process.env.JWT_SECRET;
-  if (!jwtSecret) throw new Error('JWT_SECRET environment variable is required');
 
   await app.register(import('@fastify/cors'));
 
@@ -64,6 +87,13 @@ async function bootstrap() {
   const worldService = new WorldService(worldRepo, charRepo);
   registerWorldRoutes(app, worldService, authService);
 
+  const matrixRepo = new MatrixRepository(db);
+  const matrixService = new MatrixService(matrixRepo);
+  registerMatrixRoutes(app, matrixService, authService);
+
+  const magicRepo = new MagicRepository(db);
+  const magicService = new MagicService(magicRepo);
+
   const combatRepo = new CombatRepository(db);
   const mobRepo = new MobRepository(db);
   const combatService = new CombatService(
@@ -76,17 +106,17 @@ async function bootstrap() {
   );
   registerCombatRoutes(app, combatService, authService);
 
-  const matrixRepo = new MatrixRepository(db);
-  const matrixService = new MatrixService(matrixRepo);
-  registerMatrixRoutes(app, matrixService, authService);
-
   const auditLogger = new AuditLogger(db);
   const missionRepo = new MissionRepository(db);
   const missionGen = new MissionGenerator();
   const missionService = new MissionService(auditLogger, missionRepo, charRepo, worldRepo, missionGen);
   registerMissionRoutes(app, missionService, authService);
 
-  const socketHub = new SocketHub(httpServer, authService);
+  const shopRepo = new ShopRepository(db);
+  const shopService = new ShopService(shopRepo, worldRepo, charRepo);
+  registerShopRoutes(app, shopService, authService);
+
+  const socketHub = new SocketHub(app.server, authService);
 
   socketHub.onConnection(async (socket) => {
     const accountId = socket.data.accountId;
@@ -175,8 +205,8 @@ async function bootstrap() {
   const activeRooms = new Set<string>();
 
   const originalJoinCombat = combatService.joinCombat.bind(combatService);
-  combatService.joinCombat = async (charId, roomId) => {
-    await originalJoinCombat(charId, roomId);
+  combatService.joinCombat = async (charId, accountId, roomId) => {
+    await originalJoinCombat(charId, accountId, roomId);
     activeRooms.add(roomId);
   };
 
@@ -213,18 +243,33 @@ async function bootstrap() {
     }
   });
 
-  const port = Number(process.env.PORT) || 3000;
   await app.listen({ port, host: '0.0.0.0' });
   gameLoop.start();
 
   app.log.info(`Neon Requiem server running on port ${port}`);
 
-  process.on('SIGTERM', async () => {
+  let shuttingDown = false;
+  const shutdown = async (signal: NodeJS.Signals) => {
+    if (shuttingDown) return;
+    shuttingDown = true;
+
+    app.log.info({ signal }, 'Shutting down Neon Requiem server');
     gameLoop.stop();
-    await db.$disconnect();
-    await pool.end();
-    process.exit(0);
-  });
+
+    try {
+      await socketHub.close();
+      await app.close();
+      await db.$disconnect();
+      await pool.end();
+      process.exit(0);
+    } catch (err) {
+      app.log.error({ err }, 'Error during shutdown');
+      process.exit(1);
+    }
+  };
+
+  process.on('SIGTERM', () => void shutdown('SIGTERM'));
+  process.on('SIGINT', () => void shutdown('SIGINT'));
 }
 
 bootstrap().catch(console.error);

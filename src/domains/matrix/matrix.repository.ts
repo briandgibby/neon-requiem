@@ -69,9 +69,9 @@ export class MatrixRepository {
     });
   }
 
-  async getCharacterWithEquipment(characterId: string) {
-    return this.db.character.findUnique({
-      where: { id: characterId },
+  async getCharacterWithEquipment(characterId: string, accountId?: string) {
+    return this.db.character.findFirst({
+      where: accountId ? { id: characterId, accountId } : { id: characterId },
       include: {
         inventory: {
           where: { isEquipped: true },

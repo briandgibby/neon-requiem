@@ -25,8 +25,8 @@ export class MatrixService {
     return { stunTaken: stunAmount - overflow, physTaken: totalPhysDamage, isDead: newHp <= 0, isUnconscious: newStun <= 0 && newHp > 0 };
   }
 
-  async jackIn(characterId: string, roomId: string) {
-    const character = await this.matrixRepo.getCharacterWithEquipment(characterId);
+  async jackIn(characterId: string, accountId: string, roomId: string) {
+    const character = await this.matrixRepo.getCharacterWithEquipment(characterId, accountId);
     if (!character) throw new NotFoundError('Character');
     
     if (character.isJackedIn) throw new ValidationError('Already jacked into the Matrix');
@@ -52,8 +52,8 @@ export class MatrixService {
     };
   }
 
-  async jackOut(characterId: string, isEmergency: boolean = false) {
-    const character = await this.matrixRepo.getCharacterWithEquipment(characterId);
+  async jackOut(characterId: string, accountId: string, isEmergency: boolean = false) {
+    const character = await this.matrixRepo.getCharacterWithEquipment(characterId, accountId);
     if (!character || !character.isJackedIn) {
       throw new ValidationError('Not currently jacked in');
     }
@@ -76,14 +76,14 @@ export class MatrixService {
     return { message: 'Neural link gracefully terminated. Safe travels, Chummer.' };
   }
 
-  async getActiveNode(characterId: string) {
-    const character = await this.matrixRepo.getCharacterWithEquipment(characterId);
+  async getActiveNode(characterId: string, accountId?: string) {
+    const character = await this.matrixRepo.getCharacterWithEquipment(characterId, accountId);
     if (!character?.activeNodeId) return null;
     return this.matrixRepo.findNodeById(character.activeNodeId);
   }
 
-  async performHacking(characterId: string, type: 'brute' | 'sleaze'): Promise<MatrixHackingResult> {
-    const character = await this.matrixRepo.getCharacterWithEquipment(characterId);
+  async performHacking(characterId: string, accountId: string, type: 'brute' | 'sleaze'): Promise<MatrixHackingResult> {
+    const character = await this.matrixRepo.getCharacterWithEquipment(characterId, accountId);
     if (!character || !character.isJackedIn || !character.activeNodeId) {
       throw new ValidationError('Not currently jacked into a node');
     }
@@ -132,8 +132,8 @@ export class MatrixService {
     }
   }
 
-  async dataSpike(characterId: string, iceId: string): Promise<DataSpikeResult> {
-    const character = await this.matrixRepo.getCharacterWithEquipment(characterId);
+  async dataSpike(characterId: string, accountId: string, iceId: string): Promise<DataSpikeResult> {
+    const character = await this.matrixRepo.getCharacterWithEquipment(characterId, accountId);
     if (!character || !character.isJackedIn) throw new ValidationError('Not jacked in');
 
     const node = await this.matrixRepo.findNodeById(character.activeNodeId!);
@@ -254,8 +254,8 @@ export class MatrixService {
     return results;
   }
 
-  async repairProgram(characterId: string, inventoryItemId: string): Promise<RepairResult> {
-    const character = await this.matrixRepo.getCharacterWithEquipment(characterId);
+  async repairProgram(characterId: string, accountId: string, inventoryItemId: string): Promise<RepairResult> {
+    const character = await this.matrixRepo.getCharacterWithEquipment(characterId, accountId);
     if (!character || !character.isJackedIn) throw new ValidationError('Not jacked in');
 
     const program = character.inventory.find(i => i.id === inventoryItemId);

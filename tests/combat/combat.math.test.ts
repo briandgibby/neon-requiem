@@ -3,13 +3,13 @@ import { CombatParticipant } from '../../src/domains/combat/combat.types';
 
 describe('CombatMath', () => {
   const mockAttacker: CombatParticipant = {
-    id: '1', name: 'A', type: 'player', hp: 100, maxHp: 100, ap: 6, maxAp: 6, status: 'engaged', recoveryTicks: 0, isPetActive: false,
-    level: 1, agility: 5, intuition: 5, strength: 5, body: 5, luck: 5, masteryCQC: 5, masteryPistol: 0, masteryRifle: 0, masteryAutomatic: 0, armorValue: 0
+    id: '1', name: 'A', type: 'player', hp: 100, maxHp: 100, stun: 100, maxStun: 100, mana: 100, maxMana: 100, ap: 6, maxAp: 6, status: 'engaged', recoveryTicks: 0, isPetActive: false,
+    level: 1, agility: 5, dexterity: 5, intuition: 5, strength: 5, body: 5, logic: 5, willpower: 5, charisma: 5, luck: 5, masteryCQC: 5, masteryPistol: 0, masteryRifle: 0, masteryAutomatic: 0, armorValue: 0
   };
 
   const mockDefender: CombatParticipant = {
-    id: '2', name: 'D', type: 'npc', hp: 100, maxHp: 100, ap: 6, maxAp: 6, status: 'engaged', recoveryTicks: 0, isPetActive: false,
-    level: 1, agility: 5, intuition: 5, strength: 5, body: 5, luck: 5, masteryCQC: 5, masteryPistol: 0, masteryRifle: 0, masteryAutomatic: 0, armorValue: 5
+    id: '2', name: 'D', type: 'npc', hp: 100, maxHp: 100, stun: 100, maxStun: 100, mana: 0, maxMana: 0, ap: 6, maxAp: 6, status: 'engaged', recoveryTicks: 0, isPetActive: false,
+    level: 1, agility: 5, dexterity: 5, intuition: 5, strength: 5, body: 5, logic: 5, willpower: 5, charisma: 5, luck: 5, masteryCQC: 5, masteryPistol: 0, masteryRifle: 0, masteryAutomatic: 0, armorValue: 5
   };
 
   describe('calculateHitType', () => {

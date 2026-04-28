@@ -1,4 +1,4 @@
-import { PrismaClient } from '@prisma/client';
+import { Prisma, PrismaClient } from '@prisma/client';
 import { CombatSession, CombatParticipant } from './combat.types';
 
 export class CombatRepository {
@@ -56,7 +56,7 @@ export class CombatRepository {
       where: {
         participants: {
           path: [participantId],
-          not: null,
+          not: Prisma.JsonNull,
         },
       },
     });

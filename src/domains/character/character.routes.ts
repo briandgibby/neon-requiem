@@ -1,9 +1,9 @@
 import { FastifyInstance } from 'fastify';
-import { z } from 'zod';
+import { z, ZodError } from 'zod';
 import { CharacterService } from './character.service';
 import { AuthService } from '../auth/auth.service';
-import { AppError, UnauthorizedError } from '../../shared/errors';
-import { AuthPayload } from '../../shared/types';
+import { extractAuthPayload } from '../auth/auth.middleware';
+import { AppError } from '../../shared/errors';
 
 const createSchema = z.object({
   name: z.string().min(2).max(30),
@@ -28,11 +28,6 @@ const createSchema = z.object({
   mentorSpirit: z.enum(['bear', 'gator', 'cat', 'eagle', 'wolf', 'rat', 'valkyrie', 'chaos']).optional(),
 });
 
-function extractAuth(authService: AuthService, authHeader: string | undefined): AuthPayload {
-  if (!authHeader?.startsWith('Bearer ')) throw new UnauthorizedError('Missing or invalid Authorization header');
-  return authService.verifyToken(authHeader.slice(7));
-}
-
 export function registerCharacterRoutes(
   app: FastifyInstance,
   characterService: CharacterService,
@@ -40,19 +35,22 @@ export function registerCharacterRoutes(
 ) {
   app.post('/characters', async (req, reply) => {
     try {
-      const payload = extractAuth(authService, req.headers.authorization);
+      const payload = extractAuthPayload(authService, req.headers.authorization);
       const body = createSchema.parse(req.body);
       const character = await characterService.createCharacter({ accountId: payload.accountId, ...body });
       return reply.code(201).send(character);
     } catch (err) {
       if (err instanceof AppError) return reply.code(err.statusCode).send({ error: err.message });
+      if (err instanceof ZodError) {
+        return reply.code(422).send({ error: 'Validation failed', details: err.flatten() });
+      }
       throw err;
     }
   });
 
   app.get('/characters', async (req, reply) => {
     try {
-      const payload = extractAuth(authService, req.headers.authorization);
+      const payload = extractAuthPayload(authService, req.headers.authorization);
       return reply.send(await characterService.listCharacters(payload.accountId));
     } catch (err) {
       if (err instanceof AppError) return reply.code(err.statusCode).send({ error: err.message });
@@ -63,7 +61,7 @@ export function registerCharacterRoutes(
   app.get('/characters/:id', async (req, reply) => {
     const { id } = req.params as { id: string };
     try {
-      const payload = extractAuth(authService, req.headers.authorization);
+      const payload = extractAuthPayload(authService, req.headers.authorization);
       return reply.send(await characterService.getCharacter(id, payload.accountId));
     } catch (err) {
       if (err instanceof AppError) return reply.code(err.statusCode).send({ error: err.message });

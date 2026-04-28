@@ -45,8 +45,8 @@ export class CombatService {
     return session;
   }
 
-  async joinCombat(characterId: string, roomId: string): Promise<void> {
-    const character = await this.charRepo.findById(characterId);
+  async joinCombat(characterId: string, accountId: string, roomId: string): Promise<void> {
+    const character = await this.charRepo.findByIdAndAccount(characterId, accountId);
     if (!character) throw new NotFoundError('Character');
 
     const session = await this.getOrCreateSession(roomId);
@@ -90,6 +90,9 @@ export class CombatService {
   }
 
   async performMove(input: MoveInput): Promise<any> {
+    const character = await this.charRepo.findByIdAndAccount(input.characterId, input.accountId);
+    if (!character) throw new NotFoundError('Character');
+
     const session = await this.combatRepo.findSessionByParticipant(input.characterId);
     if (!session) throw new ValidationError('Character is not in combat');
 
@@ -201,7 +204,7 @@ export class CombatService {
     
     if (castResult.success && target) {
       // Apply effect (Simplified: direct damage for now)
-      const damage = castResult.effectValue;
+      const damage = castResult.effectValue ?? 0;
       target.hp -= damage;
       if (target.hp < 0) target.hp = 0;
     }
@@ -307,10 +310,14 @@ export class CombatService {
       recoveryTicks: 0,
       isPetActive: false,
       level: template?.level || 5,
-      agility: template?.agility || 5,
-      intuition: template?.intuition || 4,
-      strength: template?.strength || 6,
       body: template?.body || 6,
+      agility: template?.agility || 5,
+      dexterity: template?.dexterity || 4,
+      strength: template?.strength || 6,
+      logic: template?.logic || 3,
+      intuition: template?.intuition || 4,
+      willpower: template?.willpower || 4,
+      charisma: template?.charisma || 2,
       luck: 0,
       masteryCQC: template?.masteryCQC || 4,
       masteryPistol: template?.masteryPistol || 4,

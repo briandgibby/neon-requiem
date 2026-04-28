@@ -48,6 +48,8 @@ const CLASSES = [
   { slug: 'weapons-adept', name: 'Weapons Adept', line: 'awakened', desc: 'Magically enhanced physical combat.' },
 ];
 
+const getSelectedClass = (className: string) => CLASSES.find(c => c.slug === className);
+
 const UI_RACE_DATA: any = {
   human: { body: { floor: 1, cap: 6 }, agility: { floor: 1, cap: 6 }, dexterity: { floor: 1, cap: 6 }, strength: { floor: 1, cap: 6 }, logic: { floor: 1, cap: 6 }, intuition: { floor: 1, cap: 6 }, willpower: { floor: 1, cap: 6 }, charisma: { floor: 1, cap: 6 }, luck: { floor: 1, cap: 7 } },
   surge: { body: { floor: 1, cap: 5 }, agility: { floor: 2, cap: 7 }, dexterity: { floor: 2, cap: 7 }, strength: { floor: 1, cap: 5 }, logic: { floor: 1, cap: 6 }, intuition: { floor: 2, cap: 7 }, willpower: { floor: 1, cap: 6 }, charisma: { floor: 1, cap: 6 }, luck: { floor: 1, cap: 7 } },
@@ -118,7 +120,7 @@ export const CharacterView: React.FC<CharacterViewProps> = ({ token, onSelect, o
   const derived = {
     hp: 50 + (formData.body * 10) + (formData.strength * 5),
     stun: 50 + (formData.willpower * 10) + (formData.logic * 5),
-    mana: CLASSES.find(c => c.slug === formData.className)?.line === 'awakened' 
+    mana: getSelectedClass(formData.className)?.line === 'awakened'
       ? 50 + (formData.willpower * 10) + (formData.charisma * 5)
       : 0,
     slots: 5 + formData.strength + Math.floor(formData.body / 2)
@@ -163,13 +165,45 @@ export const CharacterView: React.FC<CharacterViewProps> = ({ token, onSelect, o
 
   const handleCreate = async () => {
     try {
+      setError('');
+
+      if (formData.name.trim().length < 2) {
+        setError('NAME MUST BE AT LEAST 2 CHARACTERS');
+        return;
+      }
+
+      const selectedClass = getSelectedClass(formData.className);
+      const payload: any = {
+        name: formData.name.trim(),
+        faction: formData.faction,
+        race: formData.race,
+        className: formData.className,
+        body: formData.body,
+        agility: formData.agility,
+        dexterity: formData.dexterity,
+        strength: formData.strength,
+        logic: formData.logic,
+        intuition: formData.intuition,
+        willpower: formData.willpower,
+        charisma: formData.charisma,
+        luck: formData.luck,
+      };
+
+      if (formData.className === 'street-doc') {
+        payload.streetDocPath = formData.streetDocPath;
+      }
+
+      if (selectedClass?.line === 'awakened') {
+        payload.mentorSpirit = formData.mentorSpirit;
+      }
+
       const response = await fetch('http://localhost:3000/characters', {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
         },
-        body: JSON.stringify(formData),
+        body: JSON.stringify(payload),
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'Creation failed');
@@ -295,7 +329,7 @@ export const CharacterView: React.FC<CharacterViewProps> = ({ token, onSelect, o
                     </div>
                   )}
 
-                  {CLASSES.find(c => c.slug === formData.className)?.line === 'awakened' && (
+                  {getSelectedClass(formData.className)?.line === 'awakened' && (
                     <div className="space-y-4">
                       <label className="text-xs uppercase tracking-widest opacity-60">Mentor Spirit</label>
                       <select 

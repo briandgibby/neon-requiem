@@ -44,12 +44,21 @@ describe('CombatService', () => {
 
   const mockCharacter = {
     id: 'char_1',
+    accountId: 'acc_1',
     name: 'Kira',
     currentHp: 100,
     maxHp: 100,
+    currentStun: 100,
+    maxStun: 100,
+    currentMana: 0,
+    maxMana: 0,
     level: 1,
     agility: 5,
+    dexterity: 5,
+    logic: 5,
     intuition: 5,
+    willpower: 5,
+    charisma: 5,
     strength: 5,
     body: 5,
     luck: 5,
@@ -62,11 +71,11 @@ describe('CombatService', () => {
 
   describe('joinCombat', () => {
     it('creates a new session if none exists and populates stats', async () => {
-      mockCharRepo.findById.mockResolvedValue(mockCharacter);
+      mockCharRepo.findByIdAndAccount.mockResolvedValue(mockCharacter);
       mockCombatRepo.getSessionByRoom.mockResolvedValue(null);
       mockWorldRepo.findRoomById.mockResolvedValue({ id: 'room_1', securityRating: 'C' });
 
-      await service.joinCombat('char_1', 'room_1');
+      await service.joinCombat('char_1', 'acc_1', 'room_1');
 
       expect(mockCombatRepo.saveSession).toHaveBeenCalledWith(expect.objectContaining({
         roomId: 'room_1',
@@ -90,9 +99,10 @@ describe('CombatService', () => {
         participants: { 'char_1': actor, 'mob_1': target },
         roomId: 'room_1'
       };
+      mockCharRepo.findByIdAndAccount.mockResolvedValue(mockCharacter);
       mockCombatRepo.findSessionByParticipant.mockResolvedValue(session);
 
-      await service.performMove({ characterId: 'char_1', targetId: 'mob_1', move: 'attack' });
+      await service.performMove({ characterId: 'char_1', accountId: 'acc_1', targetId: 'mob_1', move: 'attack' });
 
       expect(actor.ap).toBe(0);
       expect(actor.status).toBe('recovering');
@@ -102,9 +112,10 @@ describe('CombatService', () => {
     it('throws error if attacking while recovering', async () => {
       const participant = { ...mockCharacter, status: 'recovering', ap: 0 };
       const session = { participants: { 'char_1': participant } };
+      mockCharRepo.findByIdAndAccount.mockResolvedValue(mockCharacter);
       mockCombatRepo.findSessionByParticipant.mockResolvedValue(session);
 
-      await expect(service.performMove({ characterId: 'char_1', targetId: 'mob_1', move: 'attack' }))
+      await expect(service.performMove({ characterId: 'char_1', accountId: 'acc_1', targetId: 'mob_1', move: 'attack' }))
         .rejects.toThrow(ValidationError);
     });
   });
@@ -113,9 +124,10 @@ describe('CombatService', () => {
     it('sets status to guarding', async () => {
       const participant = { ...mockCharacter, ap: 6, status: 'idle' };
       const session = { participants: { 'char_1': participant }, roomId: 'room_1' };
+      mockCharRepo.findByIdAndAccount.mockResolvedValue(mockCharacter);
       mockCombatRepo.findSessionByParticipant.mockResolvedValue(session);
 
-      await service.performMove({ characterId: 'char_1', targetId: 'char_1', move: 'guard' });
+      await service.performMove({ characterId: 'char_1', accountId: 'acc_1', targetId: 'char_1', move: 'guard' });
 
       expect(participant.status).toBe('guarding');
       expect(participant.ap).toBe(5);

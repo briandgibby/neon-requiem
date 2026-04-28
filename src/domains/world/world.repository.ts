@@ -1,4 +1,4 @@
-import { PrismaClient } from '@prisma/client';
+import { Prisma, PrismaClient } from '@prisma/client';
 import { RoomRecord, ZoneRecord } from './world.types';
 
 export class WorldRepository {
@@ -44,7 +44,7 @@ export class WorldRepository {
     }) as unknown as ZoneRecord | null;
   }
 
-  async updateRoom(id: string, data: Partial<RoomRecord>): Promise<RoomRecord> {
+  async updateRoom(id: string, data: Prisma.RoomUpdateInput): Promise<RoomRecord> {
     return this.db.room.update({
       where: { id },
       data,

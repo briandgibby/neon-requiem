@@ -63,6 +63,7 @@ export interface HitResult {
 
 export interface MoveInput {
   characterId: string;
+  accountId: string;
   targetId: string;
   move: CombatMove;
   spellSlug?: string;

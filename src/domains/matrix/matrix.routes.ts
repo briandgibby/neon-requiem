@@ -2,8 +2,8 @@ import { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { MatrixService } from './matrix.service';
 import { AuthService } from '../auth/auth.service';
-import { AppError, UnauthorizedError } from '../../shared/errors';
-import { AuthPayload } from '../../shared/types';
+import { extractAuthPayload } from '../auth/auth.middleware';
+import { AppError } from '../../shared/errors';
 
 const jackInSchema = z.object({
   characterId: z.string(),
@@ -15,11 +15,6 @@ const hackSchema = z.object({
   type: z.enum(['brute', 'sleaze']),
 });
 
-function extractAuth(authService: AuthService, authHeader: string | undefined): AuthPayload {
-  if (!authHeader?.startsWith('Bearer ')) throw new UnauthorizedError('Missing or invalid Authorization header');
-  return authService.verifyToken(authHeader.slice(7));
-}
-
 export function registerMatrixRoutes(
   app: FastifyInstance,
   matrixService: MatrixService,
@@ -27,9 +22,9 @@ export function registerMatrixRoutes(
 ) {
   app.post('/matrix/jack-in', async (req, reply) => {
     try {
-      extractAuth(authService, req.headers.authorization);
+      const payload = extractAuthPayload(authService, req.headers.authorization);
       const body = jackInSchema.parse(req.body);
-      const result = await matrixService.jackIn(body.characterId, body.roomId);
+      const result = await matrixService.jackIn(body.characterId, payload.accountId, body.roomId);
       return reply.send(result);
     } catch (err) {
       if (err instanceof AppError) return reply.code(err.statusCode).send({ error: err.message });
@@ -39,9 +34,9 @@ export function registerMatrixRoutes(
 
   app.post('/matrix/jack-out', async (req, reply) => {
     try {
-      extractAuth(authService, req.headers.authorization);
+      const payload = extractAuthPayload(authService, req.headers.authorization);
       const { characterId, isEmergency } = req.body as { characterId: string; isEmergency?: boolean };
-      const result = await matrixService.jackOut(characterId, isEmergency);
+      const result = await matrixService.jackOut(characterId, payload.accountId, isEmergency);
       return reply.send(result);
     } catch (err) {
       if (err instanceof AppError) return reply.code(err.statusCode).send({ error: err.message });
@@ -51,9 +46,9 @@ export function registerMatrixRoutes(
 
   app.post('/matrix/hack', async (req, reply) => {
     try {
-      extractAuth(authService, req.headers.authorization);
+      const payload = extractAuthPayload(authService, req.headers.authorization);
       const body = hackSchema.parse(req.body);
-      const result = await matrixService.performHacking(body.characterId, body.type);
+      const result = await matrixService.performHacking(body.characterId, payload.accountId, body.type);
       return reply.send(result);
     } catch (err) {
       if (err instanceof AppError) return reply.code(err.statusCode).send({ error: err.message });

@@ -1,4 +1,5 @@
 import bcrypt from 'bcrypt';
+import { getAuthMiddleware } from './auth.middleware';
 import { RegisterInput, LoginInput, LoginResult, JwtSigner, IAuthRepository } from './auth.types';
 import { ConflictError, UnauthorizedError } from '../../shared/errors';
 import { BCRYPT_ROUNDS } from '../../shared/constants';
@@ -44,5 +45,9 @@ export class AuthService {
 
   verifyToken(token: string): import('../../shared/types').AuthPayload {
     return this.jwt.verify(token);
+  }
+
+  getAuthMiddleware() {
+    return getAuthMiddleware(this);
   }
 }

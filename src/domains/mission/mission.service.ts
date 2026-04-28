@@ -17,6 +17,9 @@ export class MissionService {
   ) {}
 
   async acceptMission(input: AcceptMissionInput) {
+    const character = await this.charRepo.findByIdAndAccount(input.characterId, input.accountId);
+    if (!character) throw new NotFoundError('Character');
+
     const template = await this.missionRepo.findTemplateBySlug(input.templateSlug);
     if (!template) throw new NotFoundError('Mission template');
 
@@ -46,8 +49,8 @@ export class MissionService {
     };
   }
 
-  async completeMission(characterId: string, missionId: string, successRating: number) {
-    const character = await this.charRepo.findById(characterId);
+  async completeMission(characterId: string, accountId: string, missionId: string, successRating: number) {
+    const character = await this.charRepo.findByIdAndAccount(characterId, accountId);
     if (!character) throw new NotFoundError('Character');
 
     // 1. Calculate Payout (Placeholder)

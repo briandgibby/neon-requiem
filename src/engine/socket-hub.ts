@@ -65,6 +65,13 @@ export class SocketHub {
     this.clients.get(accountId)?.socket.emit(event, data);
   }
 
+  async close(): Promise<void> {
+    await new Promise<void>((resolve) => {
+      this.io.close(() => resolve());
+    });
+    this.clients.clear();
+  }
+
   get connectedCount(): number {
     return this.clients.size;
   }
