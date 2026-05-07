@@ -8,6 +8,10 @@ import { TICK_RATE_MS } from './shared/constants';
 import { Heartbeat } from './engine/heartbeat';
 import { EcsRegistry } from './engine/ecs/registry';
 import { RegenSystem } from './engine/ecs/systems/regen-system';
+import { CombatTickSystem } from './engine/ecs/systems/combat-tick-system';
+import { CombatReinforcementSystem } from './engine/ecs/systems/combat-reinforcement-system';
+import { MoveDispatcher } from './engine/ecs/combat/move-dispatcher';
+import { AttackExecutor } from './engine/ecs/combat/moves/attack-executor';
 import { SecurityPatrol } from './engine/security-patrol';
 import { RoomPresence } from './engine/room-presence';
 import { PresenceService } from './engine/presence.service';
@@ -88,6 +92,9 @@ async function bootstrap() {
   const ecsRegistry = new EcsRegistry();
   const heartbeat = new Heartbeat(TICK_RATE_MS);
 
+  const moveDispatcher = new MoveDispatcher();
+  moveDispatcher.register(new AttackExecutor());
+
   // Domain Repositories & Services
   const authRepo = new AuthRepository(db);
   const authService = new AuthService(authRepo, jwtSigner);
@@ -116,7 +123,9 @@ async function bootstrap() {
     worldRepo, 
     mobRepo, 
     magicService, 
-    matrixService
+    matrixService,
+    ecsRegistry,
+    moveDispatcher
   );
   registerCombatRoutes(app, combatService, authService);
 
@@ -134,6 +143,8 @@ async function bootstrap() {
   heartbeat.subscribe(combatService);
   heartbeat.subscribe(new SecurityPatrol(db, combatService, app.log));
   heartbeat.subscribe(new RegenSystem(ecsRegistry));
+  heartbeat.subscribe(new CombatTickSystem(ecsRegistry));
+  heartbeat.subscribe(new CombatReinforcementSystem(ecsRegistry, mobRepo));
 
   const socketHub = new SocketHub(app.server, authService, presenceService);
   const commandDispatcher = new CommandDispatcher(worldService, socketHub);

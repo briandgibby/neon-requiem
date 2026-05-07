@@ -1,3 +1,5 @@
+import { EntityId } from './registry';
+
 export enum ComponentTypes {
   Identity = 'identity',
   Position = 'position',
@@ -8,6 +10,10 @@ export enum ComponentTypes {
   Attributes = 'attributes', // Core Attributes (Body, Agility, etc.)
   Skills = 'skills',         // Combat Masteries
   CombatStatus = 'combat_status',
+  CombatSession = 'combat_session',
+  MobTemplate = 'mob_template',
+  PlayerId = 'player_id',
+  NpcId = 'npc_id',
   Ai = 'ai',
 }
 
@@ -60,6 +66,29 @@ export interface SkillsComponent {
 export interface CombatStatusComponent {
   state: 'idle' | 'engaged' | 'recovering' | 'guarding';
   isPetActive: boolean;
+  sessionId?: EntityId;
+}
+
+export interface CombatSessionComponent {
+  roomId: string;
+  securityRating: string;
+  alarmState: 'GREEN' | 'YELLOW' | 'RED';
+  turnsUntilReinforcements: number | null;
+  backupCalled: boolean;
+  tick: number;
+}
+
+export interface MobTemplateComponent {
+  templateSlug: string;
+}
+
+export interface PlayerIdComponent {
+  characterId: string;
+  accountId: string;
+}
+
+export interface NpcIdComponent {
+  mobId: string;
 }
 
 export interface AiComponent {

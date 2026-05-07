@@ -56,12 +56,21 @@ describe('IDOR Vulnerability Fix Verification', () => {
 
   it('FIXED: CombatService.joinCombat throws NotFoundError when accountId does not match', async () => {
     mockRepo.findByIdAndAccount.mockResolvedValue(null);
+    const mockEcsRegistry = {
+      getEntityByComponent: jest.fn(),
+      createEntity: jest.fn().mockReturnValue('entity-1'),
+      addComponent: jest.fn(),
+      getEntitiesWith: jest.fn().mockReturnValue([]),
+      getComponent: jest.fn(),
+    };
     const combatService = new CombatService(
       { getSessionByRoom: jest.fn(), saveSession: jest.fn(), findSessionByParticipant: jest.fn() } as any,
       mockRepo as any,
       mockWorldRepo as any,
       { findBySlug: jest.fn() } as any,
       { castSpell: jest.fn() } as any,
+      {} as any,
+      mockEcsRegistry as any,
       {} as any
     );
 
@@ -71,13 +80,22 @@ describe('IDOR Vulnerability Fix Verification', () => {
 
   it('FIXED: CombatService.performMove throws NotFoundError when accountId does not match', async () => {
     mockRepo.findByIdAndAccount.mockResolvedValue(null);
+    const mockEcsRegistry = {
+      getEntityByComponent: jest.fn().mockReturnValue('actor-entity-1'),
+      createEntity: jest.fn(),
+      addComponent: jest.fn(),
+      getEntitiesWith: jest.fn().mockReturnValue([]),
+      getComponent: jest.fn(),
+    };
     const combatService = new CombatService(
       { getSessionByRoom: jest.fn(), saveSession: jest.fn(), findSessionByParticipant: jest.fn() } as any,
       mockRepo as any,
       mockWorldRepo as any,
       { findBySlug: jest.fn() } as any,
       { castSpell: jest.fn() } as any,
-      {} as any
+      {} as any,
+      mockEcsRegistry as any,
+      { dispatch: jest.fn() } as any
     );
 
     await expect(combatService.performMove({

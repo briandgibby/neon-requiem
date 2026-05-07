@@ -10,7 +10,9 @@ import {
   AiComponent,
   StunComponent,
   ManaComponent,
-  ApComponent
+  ApComponent,
+  NpcIdComponent,
+  MobTemplateComponent
 } from '../components';
 import { MobTemplateRecord } from '../../../domains/combat/mob.repository';
 import { MAX_AP } from '../../../shared/constants';
@@ -28,6 +30,16 @@ export class MobFactory {
       slug: template.slug,
     };
     registry.addComponent(entityId, ComponentTypes.Identity, identity);
+
+    const templateComp: MobTemplateComponent = {
+      templateSlug: template.slug,
+    };
+    registry.addComponent(entityId, ComponentTypes.MobTemplate, templateComp);
+
+    const npcId: NpcIdComponent = {
+      mobId: entityId, // Using the ECS entity ID as the unique NPC ID
+    };
+    registry.addComponent(entityId, ComponentTypes.NpcId, npcId);
 
     const position: PositionComponent = {
       roomId,

@@ -8,6 +8,10 @@ describe('CombatService', () => {
   let mockCharRepo: any;
   let mockWorldRepo: any;
   let mockMobRepo: any;
+  let mockMagicService: any;
+  let mockMatrixService: any;
+  let mockEcsRegistry: any;
+  let mockMoveDispatcher: any;
 
   beforeEach(() => {
     mockCombatRepo = {
@@ -18,6 +22,7 @@ describe('CombatService', () => {
     mockCharRepo = {
       findById: jest.fn(),
       findByIdAndAccount: jest.fn(),
+      updateCharacter: jest.fn(),
     };
     mockWorldRepo = {
       findRoomById: jest.fn(),
@@ -26,19 +31,29 @@ describe('CombatService', () => {
     mockMobRepo = {
       findBySlug: jest.fn(),
     };
-    const mockMagicService = {
+    mockMagicService = {
       castSpell: jest.fn(),
     };
-    const mockMatrixService = {
-      // Add methods as needed
+    mockMatrixService = {};
+    mockEcsRegistry = {
+      getEntityByComponent: jest.fn(),
+      createEntity: jest.fn().mockReturnValue('entity-1'),
+      addComponent: jest.fn(),
+      getEntitiesWith: jest.fn().mockReturnValue([]),
+      getComponent: jest.fn(),
+    };
+    mockMoveDispatcher = {
+      dispatch: jest.fn(),
     };
     service = new CombatService(
-      mockCombatRepo, 
-      mockCharRepo, 
-      mockWorldRepo, 
-      mockMobRepo, 
-      mockMagicService as any, 
-      mockMatrixService as any
+      mockCombatRepo,
+      mockCharRepo as any,
+      mockWorldRepo as any,
+      mockMobRepo as any,
+      mockMagicService as any,
+      mockMatrixService as any,
+      mockEcsRegistry as any,
+      mockMoveDispatcher as any
     );
   });
 
@@ -70,67 +85,51 @@ describe('CombatService', () => {
   };
 
   describe('joinCombat', () => {
-    it('creates a new session if none exists and populates stats', async () => {
+    it('creates a new player entity in ECS if none exists', async () => {
       mockCharRepo.findByIdAndAccount.mockResolvedValue(mockCharacter);
-      mockCombatRepo.getSessionByRoom.mockResolvedValue(null);
+      mockEcsRegistry.getEntityByComponent.mockReturnValue(undefined); // Entity not in ECS
       mockWorldRepo.findRoomById.mockResolvedValue({ id: 'room_1', securityRating: 'C' });
 
       await service.joinCombat('char_1', 'acc_1', 'room_1');
 
-      expect(mockCombatRepo.saveSession).toHaveBeenCalledWith(expect.objectContaining({
-        roomId: 'room_1',
-        participants: expect.objectContaining({
-          'char_1': expect.objectContaining({
-            agility: 5,
-            strength: 5,
-          })
-        })
-      }));
+      expect(mockEcsRegistry.createEntity).toHaveBeenCalled();
+      expect(mockEcsRegistry.addComponent).toHaveBeenCalledWith(
+        'entity-1', 
+        'player_id', 
+        expect.objectContaining({ characterId: 'char_1' })
+      );
     });
   });
 
-  describe('AP and Recovery', () => {
-    it('depletes AP on move and enters recovery at 0', async () => {
-      const actor = { 
-        ...mockCharacter, id: 'char_1', ap: 1, maxAp: 6, status: 'idle', recoveryTicks: 0, isPetActive: false
-      };
-      const target = { ...mockCharacter, id: 'mob_1', name: 'Mob', type: 'npc' };
-      const session = { 
-        participants: { 'char_1': actor, 'mob_1': target },
-        roomId: 'room_1'
-      };
+  describe('performMove', () => {
+    it('dispatches move and syncs db', async () => {
       mockCharRepo.findByIdAndAccount.mockResolvedValue(mockCharacter);
-      mockCombatRepo.findSessionByParticipant.mockResolvedValue(session);
+      mockEcsRegistry.getEntityByComponent.mockReturnValue('entity-1');
+      mockEcsRegistry.getEntitiesWith.mockReturnValue(['entity-1']);
+      mockEcsRegistry.getComponent.mockImplementation((id: string, type: string) => {
+        if (type === 'player_id') return { characterId: 'char_1' };
+        if (type === 'health') return { current: 50 };
+        if (type === 'stun') return { current: 50 };
+        if (type === 'mana') return { current: 50 };
+        return undefined;
+      });
 
       await service.performMove({ characterId: 'char_1', accountId: 'acc_1', targetId: 'mob_1', move: 'attack' });
 
-      expect(actor.ap).toBe(0);
-      expect(actor.status).toBe('recovering');
-      expect(actor.recoveryTicks).toBeGreaterThan(0);
+      expect(mockMoveDispatcher.dispatch).toHaveBeenCalledWith('attack', 'entity-1', 'mob_1', { registry: mockEcsRegistry });
+      expect(mockCharRepo.updateCharacter).toHaveBeenCalledWith('char_1', {
+        currentHp: 50,
+        currentStun: 50,
+        currentMana: 50,
+      });
     });
 
-    it('throws error if attacking while recovering', async () => {
-      const participant = { ...mockCharacter, status: 'recovering', ap: 0 };
-      const session = { participants: { 'char_1': participant } };
+    it('throws error if attacking while not in combat', async () => {
       mockCharRepo.findByIdAndAccount.mockResolvedValue(mockCharacter);
-      mockCombatRepo.findSessionByParticipant.mockResolvedValue(session);
+      mockEcsRegistry.getEntityByComponent.mockReturnValue(undefined); // Not in combat
 
       await expect(service.performMove({ characterId: 'char_1', accountId: 'acc_1', targetId: 'mob_1', move: 'attack' }))
         .rejects.toThrow(ValidationError);
-    });
-  });
-
-  describe('On Guard', () => {
-    it('sets status to guarding', async () => {
-      const participant = { ...mockCharacter, ap: 6, status: 'idle' };
-      const session = { participants: { 'char_1': participant }, roomId: 'room_1' };
-      mockCharRepo.findByIdAndAccount.mockResolvedValue(mockCharacter);
-      mockCombatRepo.findSessionByParticipant.mockResolvedValue(session);
-
-      await service.performMove({ characterId: 'char_1', accountId: 'acc_1', targetId: 'char_1', move: 'guard' });
-
-      expect(participant.status).toBe('guarding');
-      expect(participant.ap).toBe(5);
     });
   });
 });

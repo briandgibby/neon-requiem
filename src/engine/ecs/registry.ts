@@ -73,4 +73,14 @@ export class EcsRegistry {
   get entityCount(): number {
     return this.entities.size;
   }
+
+  getEntityByComponent<T>(type: ComponentType, predicate: (data: T) => boolean): EntityId | undefined {
+    const componentMap = this.componentsByType.get(type);
+    if (!componentMap) return undefined;
+
+    for (const [entityId, data] of componentMap.entries()) {
+      if (predicate(data)) return entityId;
+    }
+    return undefined;
+  }
 }
