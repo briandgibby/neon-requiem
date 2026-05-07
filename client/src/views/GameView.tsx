@@ -19,6 +19,17 @@ interface Character {
   areaKnowledge?: string[];
 }
 
+interface RoomOccupant {
+  characterId: string;
+  name: string;
+}
+
+interface ChatMessage {
+  from: string;
+  text: string;
+  scope: 'room' | 'tell';
+}
+
 interface GameViewProps {
   token: string;
   user: { username: string };
@@ -31,6 +42,7 @@ export const GameView: React.FC<GameViewProps> = ({ token, character, onLogout }
   const [charData, setCharData] = useState<Character>(character);
   const [roomData, setRoomData] = useState<any>(null);
   const [localPois, setLocalPois] = useState<any[]>([]);
+  const [roomOccupants, setRoomOccupants] = useState<RoomOccupant[]>([]);
   const terminalRef = useRef<TerminalHandle>(null);
 
   useEffect(() => {
@@ -67,6 +79,23 @@ export const GameView: React.FC<GameViewProps> = ({ token, character, onLogout }
       setLocalPois(data);
     });
 
+    socket.on('room_occupants', (data: RoomOccupant[]) => {
+      setRoomOccupants(data);
+    });
+
+    socket.on('player_entered', (data: RoomOccupant) => {
+      terminalRef.current?.writeln(`\x1b[32m${data.name} enters the room.\x1b[0m`);
+    });
+
+    socket.on('player_left', (data: RoomOccupant) => {
+      terminalRef.current?.writeln(`\x1b[33m${data.name} leaves the room.\x1b[0m`);
+    });
+
+    socket.on('chat_message', (data: ChatMessage) => {
+      const prefix = data.scope === 'tell' ? '[tell]' : '[say]';
+      terminalRef.current?.writeln(`\x1b[36m${prefix} ${data.from}: ${data.text}\x1b[0m`);
+    });
+
     // Initial character select to server
     socket.emit('select_character', { characterId: character.id });
 
@@ -75,6 +104,10 @@ export const GameView: React.FC<GameViewProps> = ({ token, character, onLogout }
       socket.off('room_data');
       socket.off('character_update');
       socket.off('local_pois');
+      socket.off('room_occupants');
+      socket.off('player_entered');
+      socket.off('player_left');
+      socket.off('chat_message');
     };
   }, [socket, character.id]);
 
@@ -150,6 +183,31 @@ export const GameView: React.FC<GameViewProps> = ({ token, character, onLogout }
                  <div className="text-[10px] italic opacity-30 p-4 border border-dashed border-white/10 text-center bg-white/[0.02]">
                    Connect to local grid to download district data.
                  </div>
+               )}
+             </div>
+           </div>
+
+           <div>
+             <div className="text-[8px] opacity-40 uppercase tracking-widest mb-2 flex justify-between">
+               <span>Room Occupants</span>
+               <span className="opacity-50">{roomOccupants.length}</span>
+             </div>
+             <div className="space-y-1">
+               {roomOccupants.length > 0 ? (
+                 roomOccupants.map(occupant => (
+                   <div
+                     key={occupant.characterId}
+                     className={`p-2 border text-[10px] uppercase tracking-wider ${
+                       occupant.characterId === charData.id
+                         ? 'border-[#00ff41]/30 bg-[#00ff41]/10 text-[#00ff41]'
+                         : 'border-white/5 bg-white/[0.02] text-[#00ff41]/70'
+                     }`}
+                   >
+                     {occupant.name}{occupant.characterId === charData.id ? ' [YOU]' : ''}
+                   </div>
+                 ))
+               ) : (
+                 <div className="text-[10px] italic opacity-30 p-2 text-center">No visible occupants.</div>
                )}
              </div>
            </div>

@@ -15,8 +15,14 @@ import {
 } from '../../shared/constants';
 import { NotFoundError, ValidationError } from '../../shared/errors';
 import { calculateHitType, calculateAbsorbType, resolveHit } from './combat.math';
+import { Tickable } from '../../engine/heartbeat';
 
-export class CombatService {
+export class CombatService implements Tickable {
+  readonly name = 'CombatService';
+  readonly frequency = 1; // Process combat every tick
+
+  private activeRooms = new Set<string>();
+
   constructor(
     private readonly combatRepo: CombatRepository,
     private readonly charRepo: CharacterRepository,
@@ -25,6 +31,13 @@ export class CombatService {
     private readonly magicService: MagicService,
     private readonly matrixService: MatrixService,
   ) {}
+
+  async onTick(_tickCount: number): Promise<void> {
+    const rooms = Array.from(this.activeRooms);
+    for (const roomId of rooms) {
+      await this.processTick(roomId);
+    }
+  }
 
   async getOrCreateSession(roomId: string): Promise<CombatSession> {
     let session = await this.combatRepo.getSessionByRoom(roomId);
@@ -86,6 +99,11 @@ export class CombatService {
     };
 
     session.participants[characterId] = participant;
+    await this.combatRepo.saveSession(session);
+    this.activeRooms.add(roomId);
+  }
+
+  async saveSession(session: CombatSession): Promise<void> {
     await this.combatRepo.saveSession(session);
   }
 

@@ -2,7 +2,11 @@
 
 **Goal:** Implement the combat domain—AP/Recovery engine, combat style masteries, tiered hit resolution (Absorbs/Glancing), and the "On Guard" tactical system.
 
-**Status:** Complete — 38/38 tests passing (15 new), combat logic implemented.
+**Status:** Partially implemented / stale checklist — backend build and tests currently pass, and core combat math/service logic exists. However, several checklist items below overstate the current implementation: named moves are not fully implemented as distinct behaviors, combat results are not broadcast through SocketHub, and live multiplayer combat lifecycle/concurrency work remains.
+
+**Verified 2026-04-28:** root `npm run build` passes; root `npm test -- --silent` passes with 9 suites / 50 tests.
+
+**Remaining before this plan can be considered complete:** align route schema with service moves, add room-local Socket.IO combat broadcasts, implement/verify named moves or mark them deferred, handle combat end/cleanup/rewards, and harden JSON session concurrency.
 
 ---
 
@@ -83,22 +87,22 @@ prisma/
 
 ## Task 5: Initial Move Set (v1)
 
-- [x] **Backstab (CQC):** Complex action, requires stealth, 2x-4x crit potential.
-- [x] **Scattershot (Shotgun):** Complex, multi-target, power-based falloff.
-- [x] **Aimed Shot (Rifle):** Complex, ignores % armor, higher crit chance.
-- [x] **Trip (Whip/Unarmed):** Complex, adds delay to target.
+- [~] **Backstab (CQC):** Planned named move; not yet verified as a distinct implemented behavior.
+- [~] **Scattershot (Shotgun):** Planned named move; not yet verified as a distinct implemented behavior.
+- [~] **Aimed Shot (Rifle):** Planned named move; not yet verified as a distinct implemented behavior.
+- [~] **Trip (Whip/Unarmed):** Planned named move; not yet verified as a distinct implemented behavior.
 
 ---
 
 ## Task 6: Combat Service & Persistence
 
 - [x] `combat.repository.ts`: Use a temporary store to track active fights per room.
-- [x] `combat.service.ts`: Orchestrate actions and broadcast results to `SocketHub`.
+- [~] `combat.service.ts`: Orchestrate actions. SocketHub room-local combat broadcasts remain to be implemented.
 
 ---
 
 ## Completion Checklist
 
-- [x] `npm test` — all tests passing (38/38)
-- [x] `npx tsc --noEmit` — no errors.
-- [x] Integration: Player can initiate combat, spend AP, and receive tiered absorb feedback.
+- [x] Backend build currently passes: root `npm run build`.
+- [x] Backend tests currently pass: root `npm test -- --silent` (9 suites / 50 tests).
+- [~] Integration: Player can initiate combat and spend AP through backend routes/services, but live room-local combat feedback, encounter lifecycle, cleanup/rewards, and concurrent play safety remain unfinished.

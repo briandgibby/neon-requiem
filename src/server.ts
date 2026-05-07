@@ -5,8 +5,14 @@ import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from '@prisma/client';
 import jwt from 'jsonwebtoken';
 import { TICK_RATE_MS } from './shared/constants';
-import { GameLoop } from './engine/game-loop';
+import { Heartbeat } from './engine/heartbeat';
+import { EcsRegistry } from './engine/ecs/registry';
+import { RegenSystem } from './engine/ecs/systems/regen-system';
+import { SecurityPatrol } from './engine/security-patrol';
+import { RoomPresence } from './engine/room-presence';
+import { PresenceService } from './engine/presence.service';
 import { SocketHub } from './engine/socket-hub';
+import { CommandDispatcher } from './engine/command-dispatcher';
 import { AuthRepository } from './domains/auth/auth.repository';
 import { AuthService } from './domains/auth/auth.service';
 import { registerAuthRoutes } from './domains/auth/auth.routes';
@@ -33,7 +39,8 @@ import { ShopRepository } from './domains/shop/shop.repository';
 import { ShopService } from './domains/shop/shop.service';
 import { registerShopRoutes } from './domains/shop/shop.routes';
 import { AuditLogger } from './engine/audit-logger';
-import type { AuthPayload } from './shared/types';
+import type { Socket } from 'socket.io';
+import type { AuthPayload, Direction } from './shared/types';
 import type { JwtSigner } from './domains/auth/auth.types';
 
 function requireEnv(name: string): string {
@@ -75,6 +82,13 @@ async function bootstrap() {
     },
   };
 
+  // Shared Engine Services
+  const roomPresence = new RoomPresence();
+  const presenceService = new PresenceService(roomPresence);
+  const ecsRegistry = new EcsRegistry();
+  const heartbeat = new Heartbeat(TICK_RATE_MS);
+
+  // Domain Repositories & Services
   const authRepo = new AuthRepository(db);
   const authService = new AuthService(authRepo, jwtSigner);
   registerAuthRoutes(app, authService);
@@ -84,7 +98,7 @@ async function bootstrap() {
   const charService = new CharacterService(charRepo, worldRepo);
   registerCharacterRoutes(app, charService, authService);
 
-  const worldService = new WorldService(worldRepo, charRepo);
+  const worldService = new WorldService(worldRepo, charRepo, presenceService);
   registerWorldRoutes(app, worldService, authService);
 
   const matrixRepo = new MatrixRepository(db);
@@ -116,7 +130,13 @@ async function bootstrap() {
   const shopService = new ShopService(shopRepo, worldRepo, charRepo);
   registerShopRoutes(app, shopService, authService);
 
-  const socketHub = new SocketHub(app.server, authService);
+  // Register Heartbeat subscribers
+  heartbeat.subscribe(combatService);
+  heartbeat.subscribe(new SecurityPatrol(db, combatService, app.log));
+  heartbeat.subscribe(new RegenSystem(ecsRegistry));
+
+  const socketHub = new SocketHub(app.server, authService, presenceService);
+  const commandDispatcher = new CommandDispatcher(worldService, socketHub);
 
   socketHub.onConnection(async (socket) => {
     const accountId = socket.data.accountId;
@@ -126,16 +146,17 @@ async function bootstrap() {
         const character = await charService.getCharacter(data.characterId, accountId);
 
         socket.data.characterId = character.id;
-        
-        // Send initial room data
+
+        // Send initial room data and establish room presence.
         if (character.currentRoomId) {
           const room = await worldService.getRoom(character.currentRoomId);
-          socket.emit('room_data', room);
-          
-          // Send local POIs if they have area knowledge
-          const pois = await db.room.findMany({
-            where: { zoneId: room.zoneId, isPOI: true }
+          socketHub.selectCharacter(socket, {
+            characterId: character.id,
+            characterName: character.name,
+            roomId: room.id,
           });
+          socket.emit('room_data', room);
+          const pois = await worldService.getPOIs(room.zoneId);
           socket.emit('local_pois', pois);
         }
 
@@ -146,105 +167,12 @@ async function bootstrap() {
     });
 
     socket.on('command', async (data: { text: string }) => {
-      const characterId = socket.data.characterId;
-      if (!characterId) return;
-
-      const cmd = data.text.toLowerCase().trim();
-      const [action, ...args] = cmd.split(' ');
-
-      try {
-        if (['n', 's', 'e', 'w', 'u', 'd', 'north', 'south', 'east', 'west', 'up', 'down'].includes(action)) {
-          const directionMap: Record<string, string> = { n: 'north', s: 'south', e: 'east', w: 'west', u: 'up', d: 'down' };
-          const direction = directionMap[action] || action;
-          
-          const result = await worldService.moveCharacter(characterId, accountId, direction as any);
-          if (result.success) {
-            socket.emit('room_data', result.room);
-            
-            // Update POIs for new room
-            const pois = await db.room.findMany({
-              where: { zoneId: result.room!.zoneId, isPOI: true }
-            });
-            socket.emit('local_pois', pois);
-          } else {
-            socket.emit('message', { text: result.error || 'You cannot go that way.', type: 'error' });
-          }
-        } else if (action === 'navigate') {
-          const targetSlug = args[0];
-          const results = await worldService.navigate(characterId, accountId, targetSlug);
-          
-          for (const result of results) {
-            if (result.success) {
-              socket.emit('room_data', result.room);
-              // Small artificial delay for "walking" feel
-              await new Promise(resolve => setTimeout(resolve, 500));
-            } else {
-              socket.emit('message', { text: result.error, type: 'error' });
-              break;
-            }
-          }
-
-          // Final POI update
-          if (results.length > 0 && results[results.length - 1].success) {
-             const finalRoom = results[results.length - 1].room!;
-             const pois = await db.room.findMany({
-               where: { zoneId: finalRoom.zoneId, isPOI: true }
-             });
-             socket.emit('local_pois', pois);
-          }
-        } else {
-          socket.emit('message', { text: `Unknown command: ${action}`, type: 'info' });
-        }
-      } catch (err: any) {
-        socket.emit('message', { text: err.message || 'An error occurred.', type: 'error' });
-      }
+      await commandDispatcher.dispatch(socket, data.text);
     });
   });
 
-  // Tracks rooms with active combat for the game loop to process
-  const activeRooms = new Set<string>();
-
-  const originalJoinCombat = combatService.joinCombat.bind(combatService);
-  combatService.joinCombat = async (charId, accountId, roomId) => {
-    await originalJoinCombat(charId, accountId, roomId);
-    activeRooms.add(roomId);
-  };
-
-  const gameLoop = new GameLoop(TICK_RATE_MS, async (tick) => {
-    // 1. Process combat ticks for active rooms
-    for (const roomId of activeRooms) {
-      await combatService.processTick(roomId);
-    }
-
-    // 2. Security Patrol Check (Every 60 ticks / ~1 minute)
-    if (tick % 60 === 0) {
-      const twoMinutesAgo = new Date(Date.now() - 2 * 60 * 1000);
-      const dirtyRooms = await db.room.findMany({
-        where: {
-          isClean: false,
-          lastCombatAt: { lt: twoMinutesAgo }
-        }
-      });
-
-      for (const room of dirtyRooms) {
-        app.log.warn({ roomId: room.id, roomSlug: room.slug }, 'Security patrol discovered a messy room! Triggering alarm.');
-        
-        // Find or create combat session to set alarm state
-        const session = await combatService.getOrCreateSession(room.id);
-        session.alarmState = 'RED';
-        session.backupCalled = true;
-        session.turnsUntilReinforcements = 1; // Immediate backup
-        
-        // Reset room cleaning status once alarm is triggered (or keep it dirty?)
-        // For now, keep it dirty so reinforcements keep coming until cleaned
-      }
-
-      app.log.info({ tick, connected: socketHub.connectedCount, activeCombats: activeRooms.size }, 'Game tick');
-    }
-  });
-
   await app.listen({ port, host: '0.0.0.0' });
-  gameLoop.start();
+  heartbeat.start();
 
   app.log.info(`Neon Requiem server running on port ${port}`);
 
@@ -254,7 +182,7 @@ async function bootstrap() {
     shuttingDown = true;
 
     app.log.info({ signal }, 'Shutting down Neon Requiem server');
-    gameLoop.stop();
+    heartbeat.stop();
 
     try {
       await socketHub.close();

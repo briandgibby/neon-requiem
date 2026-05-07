@@ -2,7 +2,9 @@
 
 **Goal:** Implement the Matrix domain—neural decking, node navigation, ICE combat, and real-world system manipulation (hacking).
 
-**Status:** Draft
+**Status:** Partially implemented — schema, repository, service, and routes exist, and basic jack-in/out plus brute/sleaze/data-spike-style service logic is present. This plan is no longer a pure draft, but the playable Matrix loop is unfinished: terminal commands, ICE tick processing, full route coverage, frontend node display, and tests remain.
+
+**Verified 2026-04-28:** root `npm run build` passes; root `npm test -- --silent` passes with 9 suites / 50 tests.
 
 ---
 
@@ -41,10 +43,8 @@ prisma/
 
 ## Task 2: Connection Logic (The Jack-In)
 
-- [x] **Command:** `jack in`
-    - Requires being in a room with an `isMatrixNode` flag.
-    - Checks for equipped Cyberdeck (or Technomancer class).
-    - Transitions player state to "Matrix Mode."
+- [~] **Command:** `jack in`
+    - Service/route support exists, but terminal command exposure and physical room/node access hardening still need verification.
 - [x] **Command:** `jack out`
     - **Graceful:** Implemented in service.
     - **Emergency:** Instant, but causes **Dumpshock** (physical damage).
@@ -62,7 +62,7 @@ prisma/
 
 ## Task 4: ICE (Intrusion Countermeasures)
 
-- [ ] **ICE Types:** 
+- [ ] **ICE Types:**
     - **White ICE:** Passive, just blocks movement or slows actions.
     - **Gray ICE:** Attacks the Cyberdeck (lowers stats/recharges).
     - **Black ICE:** Lethal, deals damage to the Decker's physical HP.
@@ -80,7 +80,8 @@ prisma/
 
 ## Completion Checklist
 
-- [ ] Player can "jack in" to a room's node.
-- [ ] Player can perform a "Sleaze" or "Brute Force" action against node security.
+- [~] Player can "jack in" through backend service/routes; terminal command UX and access checks need completion.
+- [~] Player can perform a "Sleaze" or "Brute Force" action through backend logic; command UX and tests need completion.
 - [ ] Encountering ICE triggers Matrix combat (using Plan 04 logic but mental stats).
 - [ ] Successful hack triggers a real-world effect (e.g., changing a room's name/description).
+- [ ] Matrix command flow is covered by tests.

@@ -26,8 +26,12 @@ describe('IDOR Vulnerability Fix Verification', () => {
     updateCharacterLocation: jest.fn(),
   };
 
+  const mockPresence = {
+    moveCharacterById: jest.fn(),
+  };
+
   const characterService = new CharacterService(mockRepo as any, mockWorldRepo as any);
-  const worldService = new WorldService(mockWorldRepo as any, mockRepo as any);
+  const worldService = new WorldService(mockWorldRepo as any, mockRepo as any, mockPresence as any);
 
   it('FIXED: CharacterService.getCharacter throws NotFoundError when accountId does not match', async () => {
     mockRepo.findByIdAndAccount.mockResolvedValue(null);

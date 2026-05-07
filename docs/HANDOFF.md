@@ -1,161 +1,101 @@
 # Neon Requiem - Project Handoff
-**Date:** 2026-04-27  
-**Session focus:** Alpha viability stabilization, runtime fixes, auth ownership, and UI character creation.
+
+**Date:** 2026-05-06
+**Session focus:** Architectural deepening and engine refactoring (Heartbeat & Presence).
 
 ---
 
 ## 1. Current Verified State
 
-- Backend builds successfully from the repo root with `npm run build`.
-- Backend test suite passes: 9 suites, 50 tests.
-- Frontend builds successfully on the user's machine after installing the required Windows C++ runtime dependencies.
-- Account registration works through the game client.
-- Character creation now works through the game client.
-- The game client successfully connects to the backend Socket.IO server.
-
-The project is now usable as a local prototype baseline for account creation, character creation, and entering the connected game client.
-
----
-
-## 2. Work Completed This Session
-
-### Codex Instructions
-- Added root-level `AGENTS.md`, converted from `GEMINI.md`, so Codex has repo-specific project instructions.
-
-### Backend Build Stabilization
-- Fixed backend compile blockers.
-- Corrected service construction order in `src/server.ts`.
-- Added missing `MobRepository`, `MagicRepository`, and `MagicService` wiring.
-- Fixed combat participant type drift in code and tests.
-- Fixed Prisma typing issues in combat/world repositories.
-- Fixed shop route auth access.
-
-### Runtime Architecture
-- Fixed Socket.IO binding.
-  - Socket.IO now attaches to Fastify's actual `app.server`.
-  - Removed the unused separate HTTP server that prevented reliable socket connectivity.
-- Added startup validation for:
-  - `DATABASE_URL`
-  - `JWT_SECRET`
-  - `PORT`
-- Added graceful shutdown for:
-  - game loop
-  - Socket.IO
-  - Fastify
-  - Prisma
-  - Postgres pool
-
-### Auth And Ownership
-- Added shared auth helper in `src/domains/auth/auth.middleware.ts`.
-- Added Fastify request typing for `request.user`.
-- Replaced duplicated route-level token parsing in character, world, combat, matrix, and mission routes.
-- Enforced character ownership for:
-  - combat join/action
-  - matrix jack-in/jack-out/hack
-  - mission accept/complete
-- Added IDOR regression tests for the newly protected paths.
-
-### Character Creation UI
-- Fixed the Finalize button behavior in the character creator.
-- The client now submits only backend-valid fields:
-  - `streetDocPath` only for `street-doc`
-  - `mentorSpirit` only for awakened classes
-- Added a local validation guard for too-short names.
-- Backend character creation now returns clean `422` validation responses for malformed payloads.
+- Git branch: `main`.
+- Node version: `v22.x` required.
+- Backend builds and tests pass:
+  ```powershell
+  npm run build
+  npm test -- --silent
+  ```
+- **New Core Engine Components:**
+  - `Heartbeat`: A subscriber-based timing system replacing the procedural game loop.
+  - `PresenceService`: A character-centric presence and movement orchestrator.
 
 ---
 
-## 3. Important Caveats
+## 2. Current Architecture Snapshot
 
-- The current multiplayer experience is still mostly single-player with sockets.
-- Room presence is not implemented yet.
-- Players do not currently see other players entering/leaving a room.
-- Local chat commands such as `say`, `tell`, `who`, and `look` are not implemented yet.
-- Combat state still uses JSON read-modify-write persistence and is not safe enough for concurrent live play.
-- PM2 is still configured for a single backend instance, which is fine for local/small alpha testing.
-- There is an untracked Prisma migration folder from local testing: `prisma/migrations/20260427144918_test1/`. Review before committing.
+### Backend Deepening (New)
+The project has moved from a shallow procedural model to a **Deep Module** architecture for core engine systems:
 
----
+- **Heartbeat (`src/engine/heartbeat.ts`):** 
+  - Central "pulse" of the engine.
+  - Modules implement the `Tickable` interface to register interest in time.
+  - Supports variable frequencies (e.g., Combat every 1s, Security Patrol every 60s).
+  - Isolated error handling: one subscriber failing does not stop the clock.
 
-## 4. Local Run Notes
+- **Presence & Movement (`src/engine/presence.service.ts`):**
+  - Centralized "Who is where" state.
+  - `WorldService` now updates presence automatically during `moveCharacter` and `navigate`.
+  - Emits events (`character_joined`, `character_moved`, `character_left`) that `SocketHub` listens to.
+  - **Leverage:** Decoupled socket management from movement logic.
 
-Backend:
-
-```powershell
-cd C:\Users\brian\git\neon-requiem
-npm run build
-npm start
-```
-
-Frontend:
-
-```powershell
-cd C:\Users\brian\git\neon-requiem\client
-npm run dev
-```
-
-Database reset option for local Postgres on port 5435:
-
-```powershell
-npx prisma migrate reset
-```
-
-Seed data:
-
-```powershell
-npx prisma db seed
-```
-
-Open the Vite URL, usually `http://localhost:5173/`, then register an account and create a character.
+### Domain Pattern
+- `src/domains/<name>/`: Routes, Services, Repositories, and Types.
+- `src/engine/`: Core game systems (Heartbeat, Presence, SocketHub, AuditLogger).
+- `src/shared/`: Constants, types, and utility functions.
 
 ---
 
-## 5. Recommended Next Phase
+## 3. Completed Architecture Refactors
 
-Next work should start with **Phase 3: Real Multiplayer Presence**.
+1. **Heartbeat Migration:**
+   - Moved Combat tick processing into `CombatService` (now a `Tickable`).
+   - Moved Security Patrol logic into a dedicated `SecurityPatrol` subscriber.
+   - Deleted obsolete `game-loop.ts`.
 
-Suggested scope:
+2. **Presence Migration:**
+   - Extracted presence logic from `SocketHub` into `PresenceService`.
+   - Wired `WorldService` directly to `PresenceService` to eliminate DB/Memory desync.
+   - `SocketHub` now acts as a pure **Adapter** that translates presence events into Socket.IO broadcasts.
 
-1. Track selected characters in `SocketHub`.
-2. Track room membership.
-3. Join/leave Socket.IO rooms when characters move.
-4. Broadcast local events:
-   - player enters
-   - player leaves
-   - local chat
-   - character selected
-5. Add basic commands:
-   - `look`
-   - `who`
-   - `say`
-   - `tell`
-   - `help`
-6. Update the client to show room occupants and local chat output.
+3. **Command Dispatcher Extraction:**
+   - Extracted command parsing and execution logic from `server.ts` into `src/engine/command-dispatcher.ts`.
+   - Created `CommandOutput` interface for abstracting socket responses, enabling unit testing.
+   - Moved POI fetching logic into `WorldService` and `WorldRepository`.
 
-Exit criteria for this phase:
-
-- Two players can log in from separate browser sessions.
-- Both can select characters.
-- Both can move to the same room.
-- Each player can see the other in the room.
-- `say` broadcasts only to occupants of the same room.
+4. **ECS Foundation Implementation (Phase 2.0):**
+   - Implemented a custom, lightweight Entity Component System (`src/engine/ecs/`).
+   - `EcsRegistry` provides O(1) component access and optimized intersection queries.
+   - `RegenSystem` integrated as a `Tickable` subscriber to the Heartbeat.
+   - `MobFactory` enables instantiation of DB-driven Mob templates into active ECS entities.
 
 ---
 
-## 6. Verification Commands
+## 4. Immediate Next Steps (Phase 2.1)
 
-Backend:
+**Combat Migration to ECS**
+Now that the foundation is ready, we need to migrate the existing `CombatService` logic to use ECS entities.
+- **Goal:** Replace procedural Mob management in `CombatService` with ECS queries.
+- **Benefit:** Allows for massive battles with hundreds of entities without degrading performance.
+- **Task:** Update `CombatService` to use `EcsRegistry` and migrate Mob health/stat lookups to ECS components.
 
-```powershell
-cd C:\Users\brian\git\neon-requiem
-npm run build
-npm test
-```
+---
 
-Frontend:
+## 5. Scaling Research (`docs/RESEARCH_SCALE.md`)
+We have identified the path forward for high-scale performance:
+1. **Zonal Architecture:** Distributing world areas across processes.
+2. **Global State:** Moving Presence/Combat into Redis for horizontal scaling.
+3. **Precision Timing:** Researching `setImmediate` + `hrtime` for microsecond accuracy.
+4. **ECS:** Adopting an Entity Component System for high-density NPC/Item processing.
 
-```powershell
-cd C:\Users\brian\git\neon-requiem\client
-npm run build
-```
+---
 
+## 6. CLI Best Practices (`docs/CLI-MEMORY.md`)
+- **PowerShell Syntax:** Use `;` for multi-command lines (e.g., `Remove-Item a; Remove-Item b`).
+- **Deepening Principles:** Prioritize **Locality** and **Leverage** in all refactors.
+- **Deletion Test:** If complexity disappears when a module is deleted, it was a pass-through. If it reappears in callers, the module was earning its keep.
+
+---
+
+## 7. Local Run Notes
+Backend: `npm start`
+Frontend: `cd client; npm run dev`
+Verification: `npm test`

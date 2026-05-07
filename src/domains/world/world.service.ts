@@ -4,11 +4,13 @@ import { RoomRecord, MovementResult } from './world.types';
 import { Direction } from '../../shared/types';
 import { NotFoundError, ValidationError } from '../../shared/errors';
 import { NavigationUtils } from './navigation';
+import { PresenceService } from '../../engine/presence.service';
 
 export class WorldService {
   constructor(
     private readonly worldRepo: WorldRepository,
     private readonly charRepo: CharacterRepository,
+    private readonly presence: PresenceService,
   ) {}
 
   async getRoom(slugOrId: string): Promise<RoomRecord> {
@@ -18,6 +20,10 @@ export class WorldService {
     }
     if (!room) throw new NotFoundError('Room');
     return room;
+  }
+
+  async getPOIs(zoneId: string): Promise<RoomRecord[]> {
+    return this.worldRepo.findPOIsByZone(zoneId);
   }
 
   async moveCharacter(characterId: string, accountId: string, direction: Direction): Promise<MovementResult> {
@@ -49,6 +55,9 @@ export class WorldService {
     }
 
     await this.worldRepo.updateCharacterLocation(characterId, nextRoom.id);
+    
+    // Sync memory presence
+    this.presence.moveCharacterById(characterId, nextRoom.id);
 
     return {
       success: true,

@@ -19,7 +19,11 @@ const mockCharRepo = {
   updateInventoryItem: jest.fn(),
 };
 
-const service = new WorldService(mockWorldRepo as any, mockCharRepo as any);
+const mockPresence = {
+  moveCharacterById: jest.fn(),
+};
+
+const service = new WorldService(mockWorldRepo as any, mockCharRepo as any, mockPresence as any);
 
 beforeEach(() => jest.clearAllMocks());
 

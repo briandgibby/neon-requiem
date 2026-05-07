@@ -2,7 +2,9 @@
 
 **Goal:** Create a visually appealing, terminal-style React application using `xterm.js` to enable playtesting of auth, character creation, and world movement/combat.
 
-**Status:** Draft
+**Status:** Partially implemented — Vite/React client exists with auth, character selection/creation, xterm.js terminal, Socket.IO connection, main HUD, room display, exits, and POI navigation. This plan is no longer a draft. Missing pieces include multiplayer presence UI, local chat, live combat/matrix command integration, configurable API/socket URLs, stronger payload types, client tests, and a repeatable build on the intended Node 22 environment.
+
+**Verified 2026-04-28:** frontend build in WSL fails before source bundling due missing Rolldown optional native dependency `@rolldown/binding-linux-x64-gnu`; treat as dependency/environment issue unless reproduced after a clean Node 22 install.
 
 ---
 
@@ -42,23 +44,23 @@ client/
 ---
 
 ## Task 1: Scaffolding & Setup
-- [ ] Initialize Vite + React project in `/client`.
-- [ ] Install dependencies: `xterm`, `xterm-addon-fit`, `socket.io-client`, `tailwindcss`, `lucide-react`.
-- [ ] Configure Tailwind for a cyberpunk "Neon" aesthetic (Black, Neon Green, Hot Pink).
+- [x] Initialize Vite + React project in `/client`.
+- [x] Install dependencies: `xterm`, `xterm-addon-fit`, `socket.io-client`, `tailwindcss`, `lucide-react`.
+- [x] Configure Tailwind/CSS for a cyberpunk "Neon" aesthetic (Black, Neon Green, Hot Pink).
 
 ---
 
 ## Task 2: Terminal Component (`xterm.js`)
-- [ ] Create a `Terminal` component that wraps `xterm.js`.
-- [ ] Implement a "Fit" addon to ensure it fills its container.
-- [ ] Create helper methods to print colored text (e.g., `printInfo`, `printError`, `printCombat`).
+- [x] Create a `Terminal` component that wraps `xterm.js`.
+- [x] Implement a "Fit" addon to ensure it fills its container.
+- [~] Create helper methods to print colored text. Current terminal output supports ANSI-style colored writes; richer helper APIs can be added later if needed.
 
 ---
 
 ## Task 3: Socket.IO Integration
-- [ ] Set up a `SocketContext` to manage the connection to the backend.
-- [ ] Handle automatic re-authentication using stored JWT.
-- [ ] Map socket events (`room_data`, `combat_result`, `chat_message`) to terminal output.
+- [~] Set up Socket.IO connection logic in `useSocket.ts`. A full SocketContext is not currently present.
+- [~] Handle authentication with stored JWT in `useAuth.ts`; reconnect/auth-expiry behavior still needs hardening.
+- [~] Map socket events (`room_data`, `message`, `local_pois`, `character_update`) to terminal/HUD output. Multiplayer/chat/combat/matrix events remain incomplete.
 
 ---
 
@@ -72,12 +74,12 @@ client/
 ---
 
 ## Task 5: UI Views
-- [ ] **Login/Register:** Simple forms with terminal-style buttons.
-- [ ] **Character Creator:** Multi-step form for Faction/Race/Class selection.
-- [ ] **Main HUD:**
-    - Center: Terminal.
-    - Right Sidebar: Character vitals (HP bar, AP pips, Level).
-    - Left Sidebar: Map (text-based or small grid) + Room Info.
+- [x] **Login/Register:** Simple forms with terminal-style buttons.
+- [x] **Character Creator:** Multi-step form for Faction/Race/Class selection.
+- [~] **Main HUD:**
+    - Center: Terminal exists.
+    - Right Sidebar: Character vitals exist, but some fields are placeholders/static.
+    - Left Sidebar: Map/POI/exits panel exists; room occupants and chat are not implemented yet.
 
 ---
 
@@ -89,7 +91,10 @@ client/
 ---
 
 ## Completion Checklist
-- [ ] Client can connect to Backend.
-- [ ] User can log in and create a character.
-- [ ] User can move through rooms and see descriptions in the terminal.
+- [x] Client can connect to Backend in the current prototype.
+- [x] User can log in/register and create a character.
+- [x] User can move through rooms and see descriptions in the terminal.
 - [ ] Combat feedback is rendered correctly.
+- [ ] Room occupants and local chat are rendered.
+- [ ] API/socket URLs are environment-configured instead of hardcoded.
+- [ ] Frontend build is verified on Node 22 after a clean dependency install.

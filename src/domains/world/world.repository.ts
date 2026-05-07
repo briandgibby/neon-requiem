@@ -57,4 +57,10 @@ export class WorldRepository {
       data: { currentRoomId: roomId },
     });
   }
+
+  async findPOIsByZone(zoneId: string): Promise<RoomRecord[]> {
+    return this.db.room.findMany({
+      where: { zoneId, isPOI: true },
+    }) as unknown as RoomRecord[];
+  }
 }
