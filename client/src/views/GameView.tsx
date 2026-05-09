@@ -61,6 +61,16 @@ export const GameView: React.FC<GameViewProps> = ({ token, character, onLogout }
       }
     });
 
+    const formatOccupants = (occupants: any[]) => {
+      const counts: Record<string, number> = {};
+      occupants.forEach(o => {
+        counts[o.name] = (counts[o.name] || 0) + 1;
+      });
+      return Object.entries(counts)
+        .map(([name, count]) => count > 1 ? `${name} (${count})` : name)
+        .join(', ');
+    };
+
     socket.on('matrix_data', (data: any) => {
       setMatrixData(data);
       setCharData(prev => ({ ...prev, isJackedIn: !!data }));
@@ -72,8 +82,8 @@ export const GameView: React.FC<GameViewProps> = ({ token, character, onLogout }
           if (data.occupants.length > 15) {
             terminalRef.current.writeln(`\x1b[35mThere are ${data.occupants.length} other entities present here.\x1b[0m`);
           } else {
-            const names = data.occupants.map((o: any) => o.name).join(', ');
-            terminalRef.current.writeln(`\x1b[35mAlso present: ${names}\x1b[0m`);
+            const formatted = formatOccupants(data.occupants);
+            terminalRef.current.writeln(`\x1b[35mAlso present: ${formatted}\x1b[0m`);
           }
         }
       }
@@ -88,8 +98,8 @@ export const GameView: React.FC<GameViewProps> = ({ token, character, onLogout }
           if (data.occupants.length > 15) {
             terminalRef.current.writeln(`\x1b[32mThere are ${data.occupants.length} other entities present here.\x1b[0m`);
           } else {
-            const names = data.occupants.map((o: any) => o.name).join(', ');
-            terminalRef.current.writeln(`\x1b[32mAlso present: ${names}\x1b[0m`);
+            const formatted = formatOccupants(data.occupants);
+            terminalRef.current.writeln(`\x1b[32mAlso present: ${formatted}\x1b[0m`);
           }
         }
 
