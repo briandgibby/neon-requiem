@@ -33,6 +33,13 @@ export class MissionRepository {
     });
   }
 
+  async updateActiveMission(id: string, data: any) {
+    return this.db.activeMission.update({
+      where: { id },
+      data
+    });
+  }
+
   async updateMissionStatus(id: string, status: string) {
     return this.db.activeMission.update({
       where: { id },

@@ -6,6 +6,8 @@ import { MissionGenerator } from './mission.generator';
 import { AcceptMissionInput } from './mission.types';
 import { CharacterRepository } from '../character/character.repository';
 import { WorldRepository } from '../world/world.repository';
+import { EcsRegistry } from '../../engine/ecs/registry';
+import { ComponentTypes, MissionTargetComponent } from '../../engine/ecs/components';
 
 export class MissionService {
   constructor(
@@ -13,8 +15,32 @@ export class MissionService {
     private readonly missionRepo: MissionRepository,
     private readonly charRepo: CharacterRepository,
     private readonly worldRepo: WorldRepository,
-    private readonly missionGen: MissionGenerator
+    private readonly missionGen: MissionGenerator,
+    private readonly ecsRegistry: EcsRegistry
   ) {}
+
+  async updateObjectiveProgress(missionId: string, objectiveIndex: number) {
+    const mission = await this.missionRepo.findActiveMissionById(missionId);
+    if (!mission) return;
+
+    const targetData = mission.targetData as any;
+    if (targetData.objectives[objectiveIndex]) {
+      targetData.objectives[objectiveIndex].isCompleted = true;
+    }
+
+    // Update DB
+    await this.missionRepo.updateActiveMission(missionId, { targetData });
+
+    // Notify leader
+    // This would typically go through SocketHub, but for now we audit log
+    await this.auditLogger.log({
+      category: 'MISSION_PROGRESS',
+      severity: 'INFO',
+      message: `Objective ${objectiveIndex} completed for mission ${missionId}`,
+      characterId: mission.leaderId,
+      metadata: { missionId, objectiveIndex }
+    });
+  }
 
   async acceptMission(input: AcceptMissionInput) {
     const character = await this.charRepo.findByIdAndAccount(input.characterId, input.accountId);

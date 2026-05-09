@@ -12,6 +12,7 @@ import { CombatTickSystem } from './engine/ecs/systems/combat-tick-system';
 import { CombatReinforcementSystem } from './engine/ecs/systems/combat-reinforcement-system';
 import { MatrixTickSystem } from './engine/ecs/systems/matrix-tick-system';
 import { IceAiSystem } from './engine/ecs/systems/ice-ai-system';
+import { MissionSystem } from './engine/ecs/systems/mission-system';
 import { MoveDispatcher } from './engine/ecs/combat/move-dispatcher';
 import { AttackExecutor } from './engine/ecs/combat/moves/attack-executor';
 import { MatrixBruteExecutor } from './engine/ecs/combat/moves/matrix-brute-executor';
@@ -140,7 +141,7 @@ async function bootstrap() {
   const auditLogger = new AuditLogger(db);
   const missionRepo = new MissionRepository(db);
   const missionGen = new MissionGenerator();
-  const missionService = new MissionService(auditLogger, missionRepo, charRepo, worldRepo, missionGen);
+  const missionService = new MissionService(auditLogger, missionRepo, charRepo, worldRepo, missionGen, ecsRegistry);
   registerMissionRoutes(app, missionService, authService);
 
   const shopRepo = new ShopRepository(db);
@@ -155,6 +156,7 @@ async function bootstrap() {
   heartbeat.subscribe(new CombatReinforcementSystem(ecsRegistry, mobRepo));
   heartbeat.subscribe(new MatrixTickSystem(ecsRegistry));
   heartbeat.subscribe(new IceAiSystem(ecsRegistry));
+  heartbeat.subscribe(new MissionSystem(ecsRegistry, (missionId, index) => missionService.updateObjectiveProgress(missionId, index)));
 
   const socketHub = new SocketHub(app.server, authService, presenceService);
   const commandDispatcher = new CommandDispatcher(worldService, socketHub, matrixService);

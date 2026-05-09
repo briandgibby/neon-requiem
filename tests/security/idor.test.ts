@@ -122,7 +122,8 @@ describe('IDOR Vulnerability Fix Verification', () => {
       { findTemplateBySlug: jest.fn(), createActiveMission: jest.fn() } as any,
       mockRepo as any,
       mockWorldRepo as any,
-      { generate: jest.fn() } as any
+      { generate: jest.fn() } as any,
+      {} as any
     );
 
     await expect(missionService.acceptMission({

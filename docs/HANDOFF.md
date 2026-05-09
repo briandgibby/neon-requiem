@@ -84,13 +84,20 @@ The project has moved from a shallow procedural model to a **Deep Module** archi
    - Updated `client/src/components/Terminal.tsx` to handle matrix visual mode (color grading, prompt).
    - Updated `client/src/views/GameView.tsx` to consume `matrix_data` events and render the host details.
 
+8. **Mission System Integration (Phase 3.2):**
+   - Introduced `MissionTargetComponent` to track objectives directly on ECS entities (NPCs, Nodes).
+   - Implemented `MissionSystem` to monitor objective completion (e.g., target neutralized, node breached) independently of player actions.
+   - Refactored `MissionService` to receive objective updates from the ECS and persist progress to the database.
+   - Updated `AuditLogger` and `MissionRepository` to support new objective tracking mechanics.
+
 ---
 
-## 4. Immediate Next Steps (Phase 3.2)
+## 4. Immediate Next Steps (Phase 4.0)
 
-**Mission System Integration**
-Now that combat and the Matrix are on the ECS, missions (jobs) need to interact with the new architecture.
-- **Goal:** Update the Mission Service to hook into ECS events (e.g., node hacked, NPC killed).
+**Final Refinement and Polish**
+The core engine, combat, matrix, and mission systems are now all operating on a high-performance ECS architecture.
+- **Goal:** Perform a final audit of the codebase for "cumulative overload" risks, ensure all new systems have adequate error handling, and polish the UI interactions.
+- **Task:** review resource cleanup in ECS (e.g., destroying entities when missions end), and add more complex mission templates that leverage the full power of the new engine.
 
 
 ---

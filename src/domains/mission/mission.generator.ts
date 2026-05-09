@@ -41,6 +41,23 @@ export class MissionGenerator {
         isCompleted: false,
         targetRoomSlug: targetRoom
       });
+    } else if (template.type === 'ASSASSINATION') {
+      const targetRoom = rng.pick(layout);
+      const targetId = `assassination_target_${seed}`;
+      objectives.push({
+        type: 'ELIMINATE_TARGET',
+        description: `Eliminate the corporate defector in ${targetRoom}`,
+        isMandatory: true,
+        isCompleted: false,
+        targetId
+      });
+      spawnData.push({
+        npcId: targetId,
+        templateSlug: 'security-guard', // Generic for now
+        roomSlug: targetRoom,
+        isTarget: true,
+        objectiveIndex: objectives.length - 1
+      });
     }
 
     // 4. Handle Party Composition (Dynamic Pathing)

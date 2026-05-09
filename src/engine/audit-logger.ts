@@ -1,6 +1,6 @@
 import { PrismaClient } from '@prisma/client';
 
-export type AuditCategory = 'ITEM_DROP' | 'TRANSACTION' | 'EXPLOIT_FLAG' | 'MISSION_PAYOUT';
+export type AuditCategory = 'ITEM_DROP' | 'TRANSACTION' | 'EXPLOIT_FLAG' | 'MISSION_PAYOUT' | 'MISSION_PROGRESS';
 export type AuditSeverity = 'INFO' | 'WARNING' | 'CRITICAL';
 
 export class AuditLogger {

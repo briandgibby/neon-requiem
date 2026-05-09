@@ -18,6 +18,7 @@ export enum ComponentTypes {
   MatrixNode = 'matrix_node',
   Ice = 'ice',
   Decker = 'decker',
+  MissionTarget = 'mission_target',
 }
 
 export interface IdentityComponent {
@@ -119,4 +120,11 @@ export interface DeckerComponent {
   sleaze: number;
   firewall: number;
   biofeedbackBuffer: number;
+}
+
+export interface MissionTargetComponent {
+  missionId: string;
+  objectiveIndex: number;
+  goalType: 'KILL' | 'HACK' | 'COLLECT' | 'VISIT';
+  isCompleted: boolean;
 }
