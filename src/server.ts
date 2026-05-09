@@ -10,8 +10,13 @@ import { EcsRegistry } from './engine/ecs/registry';
 import { RegenSystem } from './engine/ecs/systems/regen-system';
 import { CombatTickSystem } from './engine/ecs/systems/combat-tick-system';
 import { CombatReinforcementSystem } from './engine/ecs/systems/combat-reinforcement-system';
+import { MatrixTickSystem } from './engine/ecs/systems/matrix-tick-system';
+import { IceAiSystem } from './engine/ecs/systems/ice-ai-system';
 import { MoveDispatcher } from './engine/ecs/combat/move-dispatcher';
 import { AttackExecutor } from './engine/ecs/combat/moves/attack-executor';
+import { MatrixBruteExecutor } from './engine/ecs/combat/moves/matrix-brute-executor';
+import { MatrixSleazeExecutor } from './engine/ecs/combat/moves/matrix-sleaze-executor';
+import { MatrixDataSpikeExecutor } from './engine/ecs/combat/moves/matrix-data-spike-executor';
 import { SecurityPatrol } from './engine/security-patrol';
 import { RoomPresence } from './engine/room-presence';
 import { PresenceService } from './engine/presence.service';
@@ -94,6 +99,9 @@ async function bootstrap() {
 
   const moveDispatcher = new MoveDispatcher();
   moveDispatcher.register(new AttackExecutor());
+  moveDispatcher.register(new MatrixBruteExecutor());
+  moveDispatcher.register(new MatrixSleazeExecutor());
+  moveDispatcher.register(new MatrixDataSpikeExecutor());
 
   // Domain Repositories & Services
   const authRepo = new AuthRepository(db);
@@ -145,6 +153,8 @@ async function bootstrap() {
   heartbeat.subscribe(new RegenSystem(ecsRegistry));
   heartbeat.subscribe(new CombatTickSystem(ecsRegistry));
   heartbeat.subscribe(new CombatReinforcementSystem(ecsRegistry, mobRepo));
+  heartbeat.subscribe(new MatrixTickSystem(ecsRegistry));
+  heartbeat.subscribe(new IceAiSystem(ecsRegistry));
 
   const socketHub = new SocketHub(app.server, authService, presenceService);
   const commandDispatcher = new CommandDispatcher(worldService, socketHub);

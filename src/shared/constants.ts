@@ -28,6 +28,9 @@ export const AP_COSTS: Record<string, number> = {
   hack: 1,
   'call-backup': 1,
   'suppress-alarm': 1,
+  brute: 2,
+  sleaze: 3,
+  'data-spike': 2,
 };
 
 export const MAX_STARTING_KARMA = 50;

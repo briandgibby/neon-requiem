@@ -67,15 +67,27 @@ The project has moved from a shallow procedural model to a **Deep Module** archi
    - `RegenSystem` integrated as a `Tickable` subscriber to the Heartbeat.
    - `MobFactory` enables instantiation of DB-driven Mob templates into active ECS entities.
 
+5. **Combat Migration to ECS (Phase 2.1):**
+   - Refactored `CombatService` into an adapter between the server API and the ECS registry.
+   - Decoupled move execution via `MoveDispatcher` and isolated `AttackExecutor`.
+   - Extracted combat loop mechanics into `CombatTickSystem` and `CombatReinforcementSystem`.
+   - Updated stats and states to rely entirely on granular ECS components instead of monolithic database JSON fields.
+
+6. **Matrix Migration to ECS (Phase 3.0):**
+   - Refactored `MatrixService` into an adapter between the server API and the ECS registry.
+   - Introduced `MatrixNode`, `Ice`, and `Decker` ECS components.
+   - Added Matrix actions (`brute`, `sleaze`, `data-spike`) to the `MoveDispatcher` architecture as `MoveExecutor`s, unifying the action economy.
+   - Implemented `MatrixTickSystem` for alert decay and `IceAiSystem` for automated ICE countermeasures against intruding Deckers.
+
 ---
 
-## 4. Immediate Next Steps (Phase 2.1)
+## 4. Immediate Next Steps (Phase 3.1)
 
-**Combat Migration to ECS**
-Now that the foundation is ready, we need to migrate the existing `CombatService` logic to use ECS entities.
-- **Goal:** Replace procedural Mob management in `CombatService` with ECS queries.
-- **Benefit:** Allows for massive battles with hundreds of entities without degrading performance.
-- **Task:** Update `CombatService` to use `EcsRegistry` and migrate Mob health/stat lookups to ECS components.
+**Matrix Frontend and Command Integration**
+With the backend scaling architecture complete, the frontend needs to be updated to support the new Matrix features.
+- **Goal:** Update the UI and terminal commands to support Matrix interactions.
+- **Task:** Implement visual shifts for "Matrix Mode" (e.g., color grading, terminal prefix) and expose terminal commands (`jack in`, `brute`, `sleaze`) to interact with the new ECS Matrix systems.
+
 
 ---
 

@@ -15,6 +15,9 @@ export enum ComponentTypes {
   PlayerId = 'player_id',
   NpcId = 'npc_id',
   Ai = 'ai',
+  MatrixNode = 'matrix_node',
+  Ice = 'ice',
+  Decker = 'decker',
 }
 
 export interface IdentityComponent {
@@ -95,4 +98,25 @@ export interface AiComponent {
   state: 'idle' | 'hostile' | 'patrol';
   targetEntityId?: string;
   patrolRoute?: string[];
+}
+
+export interface MatrixNodeComponent {
+  nodeId: string;
+  securityLevel: number;
+  alertLevel: 'GREEN' | 'YELLOW' | 'RED';
+  linkedRoomId: string | null;
+}
+
+export interface IceComponent {
+  type: 'WHITE' | 'GRAY' | 'BLACK';
+  attack: number;
+  defense: number;
+}
+
+export interface DeckerComponent {
+  activeNodeEntityId: string;
+  attack: number;
+  sleaze: number;
+  firewall: number;
+  biofeedbackBuffer: number;
 }

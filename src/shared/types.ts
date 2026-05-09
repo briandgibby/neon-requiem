@@ -36,7 +36,10 @@ export type CombatMove =
   | 'cast'
   | 'hack'
   | 'call-backup'
-  | 'suppress-alarm';
+  | 'suppress-alarm'
+  | 'brute'
+  | 'sleaze'
+  | 'data-spike';
 export interface AuthPayload {
   accountId: string;
   username: string;

@@ -109,7 +109,7 @@ describe('IDOR Vulnerability Fix Verification', () => {
   it('FIXED: MatrixService.jackIn throws NotFoundError when accountId does not match', async () => {
     const matrixService = new MatrixService({
       getCharacterWithEquipment: jest.fn().mockResolvedValue(null),
-    } as any);
+    } as any, {} as any, {} as any);
 
     await expect(matrixService.jackIn('char_other', 'acc_mine', 'room_1'))
       .rejects.toThrow(NotFoundError);
