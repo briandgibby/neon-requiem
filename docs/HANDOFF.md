@@ -79,14 +79,18 @@ The project has moved from a shallow procedural model to a **Deep Module** archi
    - Added Matrix actions (`brute`, `sleaze`, `data-spike`) to the `MoveDispatcher` architecture as `MoveExecutor`s, unifying the action economy.
    - Implemented `MatrixTickSystem` for alert decay and `IceAiSystem` for automated ICE countermeasures against intruding Deckers.
 
+7. **Matrix Frontend and Command Integration (Phase 3.1):**
+   - Added Matrix commands (`jack in`, `jack out`, `brute`, `sleaze`, `data spike`) to the `CommandDispatcher`.
+   - Updated `client/src/components/Terminal.tsx` to handle matrix visual mode (color grading, prompt).
+   - Updated `client/src/views/GameView.tsx` to consume `matrix_data` events and render the host details.
+
 ---
 
-## 4. Immediate Next Steps (Phase 3.1)
+## 4. Immediate Next Steps (Phase 3.2)
 
-**Matrix Frontend and Command Integration**
-With the backend scaling architecture complete, the frontend needs to be updated to support the new Matrix features.
-- **Goal:** Update the UI and terminal commands to support Matrix interactions.
-- **Task:** Implement visual shifts for "Matrix Mode" (e.g., color grading, terminal prefix) and expose terminal commands (`jack in`, `brute`, `sleaze`) to interact with the new ECS Matrix systems.
+**Mission System Integration**
+Now that combat and the Matrix are on the ECS, missions (jobs) need to interact with the new architecture.
+- **Goal:** Update the Mission Service to hook into ECS events (e.g., node hacked, NPC killed).
 
 
 ---

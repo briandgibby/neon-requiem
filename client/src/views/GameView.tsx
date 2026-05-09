@@ -41,6 +41,7 @@ export const GameView: React.FC<GameViewProps> = ({ token, character, onLogout }
   const { socket, isConnected } = useSocket(token);
   const [charData, setCharData] = useState<Character>(character);
   const [roomData, setRoomData] = useState<any>(null);
+  const [matrixData, setMatrixData] = useState<any>(null);
   const [localPois, setLocalPois] = useState<any[]>([]);
   const [roomOccupants, setRoomOccupants] = useState<RoomOccupant[]>([]);
   const terminalRef = useRef<TerminalHandle>(null);
@@ -57,6 +58,15 @@ export const GameView: React.FC<GameViewProps> = ({ token, character, onLogout }
         if (data.type === 'combat') color = '\x1b[35m';
         
         terminalRef.current.writeln(`${color}${data.text}\x1b[0m`);
+      }
+    });
+
+    socket.on('matrix_data', (data: any) => {
+      setMatrixData(data);
+      setCharData(prev => ({ ...prev, isJackedIn: !!data }));
+      if (terminalRef.current && data) {
+        terminalRef.current.writeln(`\r\n\x1b[1;36m[ HOST: ${data.name || data.nodeId} ]\x1b[0m`);
+        terminalRef.current.writeln(`Security Level: ${data.securityLevel} | Alert Level: ${data.alertLevel}`);
       }
     });
 
@@ -135,82 +145,122 @@ export const GameView: React.FC<GameViewProps> = ({ token, character, onLogout }
     return (
       <div className="flex-1 flex flex-col gap-4">
         <div className={`text-[10px] font-bold border-b pb-2 ${charData.isJackedIn ? 'border-cyan-500/20' : 'border-[#00ff41]/20'} flex justify-between`}>
-          <span className="tracking-[0.2em] uppercase">Commlink [V4.2]</span>
-          <span className="opacity-50 text-[8px]">GPS: {roomData?.gridX || 0}:{roomData?.gridY || 0}</span>
+          <span className="tracking-[0.2em] uppercase">{charData.isJackedIn ? 'Cyberdeck [V1.2]' : 'Commlink [V4.2]'}</span>
+          <span className="opacity-50 text-[8px]">{charData.isJackedIn ? `SEC: ${matrixData?.securityLevel || 0}` : `GPS: ${roomData?.gridX || 0}:${roomData?.gridY || 0}`}</span>
         </div>
 
-        <div className="flex-1 overflow-y-auto space-y-4 pr-2 custom-scrollbar text-[#00ff41]">
-           <div>
-             <div className="text-[8px] opacity-40 uppercase tracking-widest mb-1">Current Sector</div>
-             <div className="text-xs font-bold text-glow uppercase truncate">
-               {roomData?.zone?.name || 'Unknown Sector'}
-             </div>
-           </div>
-
-           <div>
-             <div className="text-[8px] opacity-40 uppercase tracking-widest mb-2 flex justify-between">
-               <span>Local Points of Interest</span>
-               {charData.areaKnowledge?.includes(roomData?.zone?.slug) ? (
-                 <span className="text-blue-400 font-bold">[ MAP UNLOCKED ]</span>
-               ) : (
-                 <span className="text-pink-500 font-bold">[ NO MAP DATA ]</span>
-               )}
-             </div>
-             
-             <div className="space-y-1">
-               {charData.areaKnowledge?.includes(roomData?.zone?.slug) ? (
-                 localPois.length > 0 ? (
-                   localPois.map(poi => (
-                     <button 
-                       key={poi.slug}
-                       onClick={() => handleCommand(`navigate ${poi.slug}`)}
-                       className={`w-full text-left p-2 border transition-all text-[10px] group ${
-                         poi.slug === roomData?.slug 
-                         ? 'bg-blue-500/20 border-blue-500/50 text-blue-400 shadow-[0_0_10px_rgba(59,130,246,0.2)]' 
-                         : 'border-white/5 hover:border-blue-500/30 hover:bg-blue-500/5'
-                       }`}
-                     >
-                       <div className="flex justify-between items-center">
-                         <span className="font-bold tracking-wider">{poi.name}</span>
-                         <span className="text-[8px] opacity-30 group-hover:opacity-100">{poi.poiCategory}</span>
-                       </div>
-                     </button>
-                   ))
-                 ) : (
-                   <div className="text-[10px] italic opacity-30 p-2 text-center">No POIs in this sector.</div>
-                 )
-               ) : (
-                 <div className="text-[10px] italic opacity-30 p-4 border border-dashed border-white/10 text-center bg-white/[0.02]">
-                   Connect to local grid to download district data.
+        <div className={`flex-1 overflow-y-auto space-y-4 pr-2 custom-scrollbar ${charData.isJackedIn ? 'text-cyan-400' : 'text-[#00ff41]'}`}>
+           {charData.isJackedIn ? (
+             <>
+               <div>
+                 <div className="text-[8px] opacity-40 uppercase tracking-widest mb-1">Current Host</div>
+                 <div className="text-xs font-bold text-glow uppercase truncate">
+                   {matrixData?.name || matrixData?.nodeId || 'Unknown Node'}
                  </div>
-               )}
-             </div>
-           </div>
+               </div>
 
-           <div>
-             <div className="text-[8px] opacity-40 uppercase tracking-widest mb-2 flex justify-between">
-               <span>Room Occupants</span>
-               <span className="opacity-50">{roomOccupants.length}</span>
-             </div>
-             <div className="space-y-1">
-               {roomOccupants.length > 0 ? (
-                 roomOccupants.map(occupant => (
-                   <div
-                     key={occupant.characterId}
-                     className={`p-2 border text-[10px] uppercase tracking-wider ${
-                       occupant.characterId === charData.id
-                         ? 'border-[#00ff41]/30 bg-[#00ff41]/10 text-[#00ff41]'
-                         : 'border-white/5 bg-white/[0.02] text-[#00ff41]/70'
-                     }`}
-                   >
-                     {occupant.name}{occupant.characterId === charData.id ? ' [YOU]' : ''}
-                   </div>
-                 ))
-               ) : (
-                 <div className="text-[10px] italic opacity-30 p-2 text-center">No visible occupants.</div>
-               )}
-             </div>
-           </div>
+               <div>
+                 <div className="text-[8px] opacity-40 uppercase tracking-widest mb-2 flex justify-between">
+                   <span>Node Status</span>
+                 </div>
+                 
+                 <div className="space-y-1">
+                    <div className={`p-2 border text-[10px] uppercase tracking-wider ${
+                      matrixData?.alertLevel === 'RED' ? 'border-red-500/50 bg-red-500/10 text-red-500' :
+                      matrixData?.alertLevel === 'YELLOW' ? 'border-yellow-500/50 bg-yellow-500/10 text-yellow-500' :
+                      'border-cyan-500/30 bg-cyan-500/10 text-cyan-400'
+                    }`}>
+                      ALERT: {matrixData?.alertLevel || 'GREEN'}
+                    </div>
+                 </div>
+               </div>
+
+               <div>
+                 <div className="text-[8px] opacity-40 uppercase tracking-widest mb-2 flex justify-between">
+                   <span>Matrix Entities</span>
+                   <span className="opacity-50">{/* Could add ICE count here later */}</span>
+                 </div>
+                 <div className="space-y-1">
+                     {/* Placeholder for Matrix Entities */}
+                     <div className="text-[10px] italic opacity-30 p-2 text-center">Scanning local grid...</div>
+                 </div>
+               </div>
+             </>
+           ) : (
+             <>
+               <div>
+                 <div className="text-[8px] opacity-40 uppercase tracking-widest mb-1">Current Sector</div>
+                 <div className="text-xs font-bold text-glow uppercase truncate">
+                   {roomData?.zone?.name || 'Unknown Sector'}
+                 </div>
+               </div>
+
+               <div>
+                 <div className="text-[8px] opacity-40 uppercase tracking-widest mb-2 flex justify-between">
+                   <span>Local Points of Interest</span>
+                   {charData.areaKnowledge?.includes(roomData?.zone?.slug) ? (
+                     <span className="text-blue-400 font-bold">[ MAP UNLOCKED ]</span>
+                   ) : (
+                     <span className="text-pink-500 font-bold">[ NO MAP DATA ]</span>
+                   )}
+                 </div>
+                 
+                 <div className="space-y-1">
+                   {charData.areaKnowledge?.includes(roomData?.zone?.slug) ? (
+                     localPois.length > 0 ? (
+                       localPois.map(poi => (
+                         <button 
+                           key={poi.slug}
+                           onClick={() => handleCommand(`navigate ${poi.slug}`)}
+                           className={`w-full text-left p-2 border transition-all text-[10px] group ${
+                             poi.slug === roomData?.slug 
+                             ? 'bg-blue-500/20 border-blue-500/50 text-blue-400 shadow-[0_0_10px_rgba(59,130,246,0.2)]' 
+                             : 'border-white/5 hover:border-blue-500/30 hover:bg-blue-500/5'
+                           }`}
+                         >
+                           <div className="flex justify-between items-center">
+                             <span className="font-bold tracking-wider">{poi.name}</span>
+                             <span className="text-[8px] opacity-30 group-hover:opacity-100">{poi.poiCategory}</span>
+                           </div>
+                         </button>
+                       ))
+                     ) : (
+                       <div className="text-[10px] italic opacity-30 p-2 text-center">No POIs in this sector.</div>
+                     )
+                   ) : (
+                     <div className="text-[10px] italic opacity-30 p-4 border border-dashed border-white/10 text-center bg-white/[0.02]">
+                       Connect to local grid to download district data.
+                     </div>
+                   )}
+                 </div>
+               </div>
+
+               <div>
+                 <div className="text-[8px] opacity-40 uppercase tracking-widest mb-2 flex justify-between">
+                   <span>Room Occupants</span>
+                   <span className="opacity-50">{roomOccupants.length}</span>
+                 </div>
+                 <div className="space-y-1">
+                   {roomOccupants.length > 0 ? (
+                     roomOccupants.map(occupant => (
+                       <div
+                         key={occupant.characterId}
+                         className={`p-2 border text-[10px] uppercase tracking-wider ${
+                           occupant.characterId === charData.id
+                             ? 'border-[#00ff41]/30 bg-[#00ff41]/10 text-[#00ff41]'
+                             : 'border-white/5 bg-white/[0.02] text-[#00ff41]/70'
+                         }`}
+                       >
+                         {occupant.name}{occupant.characterId === charData.id ? ' [YOU]' : ''}
+                       </div>
+                     ))
+                   ) : (
+                     <div className="text-[10px] italic opacity-30 p-2 text-center">No visible occupants.</div>
+                   )}
+                 </div>
+               </div>
+             </>
+           )}
         </div>
 
         <div className={`mt-auto pt-4 border-t ${charData.isJackedIn ? 'border-cyan-500/20' : 'border-[#00ff41]/20'}`}>

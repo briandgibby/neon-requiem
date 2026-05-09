@@ -4,6 +4,7 @@ describe('CommandDispatcher', () => {
   let dispatcher: CommandDispatcher;
   let mockWorldService: any;
   let mockSocketHub: any;
+  let mockMatrixService: any;
   let mockOutput: CommandOutput;
 
   beforeEach(() => {
@@ -20,6 +21,13 @@ describe('CommandDispatcher', () => {
       findSocketForCharacter: jest.fn(),
       sendToSocket: jest.fn(),
     };
+    mockMatrixService = {
+      getActiveNode: jest.fn().mockResolvedValue(null),
+      jackIn: jest.fn(),
+      jackOut: jest.fn(),
+      performHacking: jest.fn(),
+      dataSpike: jest.fn(),
+    };
     mockOutput = {
       emit: jest.fn(),
       data: {
@@ -27,7 +35,7 @@ describe('CommandDispatcher', () => {
         accountId: 'acc-1',
       },
     };
-    dispatcher = new CommandDispatcher(mockWorldService, mockSocketHub);
+    dispatcher = new CommandDispatcher(mockWorldService, mockSocketHub, mockMatrixService);
   });
 
   it('handles help command', async () => {

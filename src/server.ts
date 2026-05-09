@@ -157,7 +157,7 @@ async function bootstrap() {
   heartbeat.subscribe(new IceAiSystem(ecsRegistry));
 
   const socketHub = new SocketHub(app.server, authService, presenceService);
-  const commandDispatcher = new CommandDispatcher(worldService, socketHub);
+  const commandDispatcher = new CommandDispatcher(worldService, socketHub, matrixService);
 
   socketHub.onConnection(async (socket) => {
     const accountId = socket.data.accountId;
