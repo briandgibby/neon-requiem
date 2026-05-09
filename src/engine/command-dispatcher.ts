@@ -69,7 +69,8 @@ export class CommandDispatcher {
           return;
         }
 
-        const room = await this.worldService.getRoom(selected.roomId);
+        const room = await this.worldService.getRoom(selected.roomId) as any;
+        room.occupants = this.socketHub.getRoomOccupants(room.id).filter(o => o.characterId !== characterId);
         respond('room_data', room);
         respond('room_occupants', this.socketHub.getRoomOccupants(room.id));
       } else if (action === 'who') {
@@ -120,7 +121,9 @@ export class CommandDispatcher {
 
         const result = await this.worldService.moveCharacter(characterId, accountId, direction);
         if (result.success && result.room) {
-          respond('room_data', result.room);
+          const room = result.room as any;
+          room.occupants = this.socketHub.getRoomOccupants(room.id).filter(o => o.characterId !== characterId);
+          respond('room_data', room);
           const pois = await this.worldService.getPOIs(result.room.zoneId);
           respond('local_pois', pois);
         } else {
@@ -137,7 +140,9 @@ export class CommandDispatcher {
 
         for (const result of results) {
           if (result.success && result.room) {
-            respond('room_data', result.room);
+            const room = result.room as any;
+            room.occupants = this.socketHub.getRoomOccupants(room.id).filter(o => o.characterId !== characterId);
+            respond('room_data', room);
             await new Promise(resolve => setTimeout(resolve, 500));
           } else {
             message(result.error || 'Navigation failed.', 'error');

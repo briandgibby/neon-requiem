@@ -170,12 +170,13 @@ async function bootstrap() {
 
         // Send initial room data and establish room presence.
         if (character.currentRoomId) {
-          const room = await worldService.getRoom(character.currentRoomId);
+          const room = await worldService.getRoom(character.currentRoomId) as any;
           socketHub.selectCharacter(socket, {
             characterId: character.id,
             characterName: character.name,
             roomId: room.id,
           });
+          room.occupants = socketHub.getRoomOccupants(room.id).filter(o => o.characterId !== character.id);
           socket.emit('room_data', room);
           const pois = await worldService.getPOIs(room.zoneId);
           socket.emit('local_pois', pois);

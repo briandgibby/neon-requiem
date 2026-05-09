@@ -16,7 +16,7 @@ describe('CommandDispatcher', () => {
     };
     mockSocketHub = {
       getSelectedClient: jest.fn(),
-      getRoomOccupants: jest.fn(),
+      getRoomOccupants: jest.fn().mockReturnValue([]),
       emitToRoom: jest.fn(),
       findSocketForCharacter: jest.fn(),
       sendToSocket: jest.fn(),

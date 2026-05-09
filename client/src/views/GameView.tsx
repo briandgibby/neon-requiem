@@ -67,6 +67,15 @@ export const GameView: React.FC<GameViewProps> = ({ token, character, onLogout }
       if (terminalRef.current && data) {
         terminalRef.current.writeln(`\r\n\x1b[1;36m[ HOST: ${data.name || data.nodeId} ]\x1b[0m`);
         terminalRef.current.writeln(`Security Level: ${data.securityLevel} | Alert Level: ${data.alertLevel}`);
+        
+        if (data.occupants && data.occupants.length > 0) {
+          if (data.occupants.length > 15) {
+            terminalRef.current.writeln(`\x1b[35mThere are ${data.occupants.length} other entities present here.\x1b[0m`);
+          } else {
+            const names = data.occupants.map((o: any) => o.name).join(', ');
+            terminalRef.current.writeln(`\x1b[35mAlso present: ${names}\x1b[0m`);
+          }
+        }
       }
     });
 
@@ -74,7 +83,18 @@ export const GameView: React.FC<GameViewProps> = ({ token, character, onLogout }
       setRoomData(data);
       if (terminalRef.current) {
         terminalRef.current.writeln(`\r\n\x1b[1;36m[ ${data.name} ]\x1b[0m`);
+        
+        if (data.occupants && data.occupants.length > 0) {
+          if (data.occupants.length > 15) {
+            terminalRef.current.writeln(`\x1b[32mThere are ${data.occupants.length} other entities present here.\x1b[0m`);
+          } else {
+            const names = data.occupants.map((o: any) => o.name).join(', ');
+            terminalRef.current.writeln(`\x1b[32mAlso present: ${names}\x1b[0m`);
+          }
+        }
+
         terminalRef.current.writeln(data.description);
+        
         if (data.exits && Object.keys(data.exits).length > 0) {
           terminalRef.current.writeln(`\x1b[33mVisible exits: ${Object.keys(data.exits).join(', ')}\x1b[0m`);
         }
