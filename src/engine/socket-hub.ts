@@ -4,6 +4,7 @@ import { AuthService } from '../domains/auth/auth.service';
 import { UnauthorizedError } from '../shared/errors';
 import { PresenceClient, RoomOccupant } from './room-presence';
 import { PresenceService } from './presence.service';
+import { PlayerSyncCoordinator } from './player-sync-coordinator';
 
 export interface ConnectedClient {
   socket: Socket;
@@ -22,9 +23,10 @@ export class SocketHub {
   private readonly clients = new Map<string, ConnectedClient>();
 
   constructor(
-    httpServer: HttpServer, 
+    httpServer: HttpServer,
     private readonly authService: AuthService,
-    private readonly presence: PresenceService
+    private readonly presence: PresenceService,
+    private readonly syncCoordinator: PlayerSyncCoordinator
   ) {
     this.io = new SocketServer(httpServer, {
       cors: { origin: '*' },
@@ -61,7 +63,19 @@ export class SocketHub {
         if (this.clients.get(client.accountId)?.socket === socket) {
           this.clients.delete(client.accountId);
         }
-        this.presence.removeSocket(socket.id);
+
+        const characterId = socket.data.characterId as string | undefined;
+        void (async () => {
+          try {
+            if (characterId) {
+              await this.syncCoordinator.handlePlayerDisconnect(characterId);
+            }
+          } catch (err) {
+            console.error('[SocketHub] Failed to persist player disconnect snapshot:', err);
+          } finally {
+            this.presence.removeSocket(socket.id);
+          }
+        })();
       });
     });
 

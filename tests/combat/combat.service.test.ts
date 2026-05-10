@@ -53,7 +53,8 @@ describe('CombatService', () => {
       mockMagicService as any,
       mockMatrixService as any,
       mockEcsRegistry as any,
-      mockMoveDispatcher as any
+      mockMoveDispatcher as any,
+      { syncAllPlayers: jest.fn().mockResolvedValue(undefined) } as any
     );
   });
 
@@ -117,11 +118,7 @@ describe('CombatService', () => {
       await service.performMove({ characterId: 'char_1', accountId: 'acc_1', targetId: 'mob_1', move: 'attack' });
 
       expect(mockMoveDispatcher.dispatch).toHaveBeenCalledWith('attack', 'entity-1', 'mob_1', { registry: mockEcsRegistry });
-      expect(mockCharRepo.updateCharacter).toHaveBeenCalledWith('char_1', {
-        currentHp: 50,
-        currentStun: 50,
-        currentMana: 50,
-      });
+      expect(service['syncCoordinator'].syncAllPlayers).toHaveBeenCalled();
     });
 
     it('throws error if attacking while not in combat', async () => {

@@ -20,8 +20,10 @@ export interface MissionInstanceData {
   objectives: MissionObjective[];
   spawnData: {
     npcId: string;
+    templateSlug: string;
     roomSlug: string;
     isTarget: boolean;
+    objectiveIndex?: number;
   }[];
 }
 

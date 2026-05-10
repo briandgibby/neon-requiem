@@ -13,6 +13,7 @@ import { CombatReinforcementSystem } from './engine/ecs/systems/combat-reinforce
 import { MatrixTickSystem } from './engine/ecs/systems/matrix-tick-system';
 import { IceAiSystem } from './engine/ecs/systems/ice-ai-system';
 import { MissionSystem } from './engine/ecs/systems/mission-system';
+import { EntityCleanupSystem } from './engine/ecs/systems/entity-cleanup-system';
 import { MoveDispatcher } from './engine/ecs/combat/move-dispatcher';
 import { AttackExecutor } from './engine/ecs/combat/moves/attack-executor';
 import { MatrixBruteExecutor } from './engine/ecs/combat/moves/matrix-brute-executor';
@@ -21,6 +22,7 @@ import { MatrixDataSpikeExecutor } from './engine/ecs/combat/moves/matrix-data-s
 import { SecurityPatrol } from './engine/security-patrol';
 import { RoomPresence } from './engine/room-presence';
 import { PresenceService } from './engine/presence.service';
+import { PlayerSyncCoordinator } from './engine/player-sync-coordinator';
 import { SocketHub } from './engine/socket-hub';
 import { CommandDispatcher } from './engine/command-dispatcher';
 import { AuthRepository } from './domains/auth/auth.repository';
@@ -96,6 +98,7 @@ async function bootstrap() {
   const roomPresence = new RoomPresence();
   const presenceService = new PresenceService(roomPresence);
   const ecsRegistry = new EcsRegistry();
+  const syncCoordinator = new PlayerSyncCoordinator(db, ecsRegistry, new AuditLogger(db));
   const heartbeat = new Heartbeat(TICK_RATE_MS);
 
   const moveDispatcher = new MoveDispatcher();
@@ -118,7 +121,7 @@ async function bootstrap() {
   registerWorldRoutes(app, worldService, authService);
 
   const matrixRepo = new MatrixRepository(db);
-  const matrixService = new MatrixService(matrixRepo);
+  const matrixService = new MatrixService(matrixRepo, ecsRegistry, moveDispatcher);
   registerMatrixRoutes(app, matrixService, authService);
 
   const magicRepo = new MagicRepository(db);
@@ -134,14 +137,15 @@ async function bootstrap() {
     magicService, 
     matrixService,
     ecsRegistry,
-    moveDispatcher
+    moveDispatcher,
+    syncCoordinator
   );
   registerCombatRoutes(app, combatService, authService);
 
   const auditLogger = new AuditLogger(db);
   const missionRepo = new MissionRepository(db);
   const missionGen = new MissionGenerator();
-  const missionService = new MissionService(auditLogger, missionRepo, charRepo, worldRepo, missionGen, ecsRegistry);
+  const missionService = new MissionService(auditLogger, missionRepo, charRepo, worldRepo, missionGen, ecsRegistry, mobRepo);
   registerMissionRoutes(app, missionService, authService);
 
   const shopRepo = new ShopRepository(db);
@@ -157,8 +161,9 @@ async function bootstrap() {
   heartbeat.subscribe(new MatrixTickSystem(ecsRegistry));
   heartbeat.subscribe(new IceAiSystem(ecsRegistry));
   heartbeat.subscribe(new MissionSystem(ecsRegistry, (missionId, index) => missionService.updateObjectiveProgress(missionId, index)));
+  heartbeat.subscribe(new EntityCleanupSystem(ecsRegistry));
 
-  const socketHub = new SocketHub(app.server, authService, presenceService);
+  const socketHub = new SocketHub(app.server, authService, presenceService, syncCoordinator);
   const commandDispatcher = new CommandDispatcher(worldService, socketHub, matrixService);
 
   socketHub.onConnection(async (socket) => {

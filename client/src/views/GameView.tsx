@@ -141,6 +141,7 @@ export const GameView: React.FC<GameViewProps> = ({ token, character, onLogout }
 
     return () => {
       socket.off('message');
+      socket.off('matrix_data');
       socket.off('room_data');
       socket.off('character_update');
       socket.off('local_pois');

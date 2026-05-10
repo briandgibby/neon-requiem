@@ -1,7 +1,7 @@
 # Neon Requiem - Project Handoff
 
-**Date:** 2026-05-06
-**Session focus:** Architectural deepening and engine refactoring (Heartbeat & Presence).
+**Date:** 2026-05-09
+**Session focus:** Diagnosis pass over recent ECS lifecycle, Matrix, Mission, SocketHub, frontend Matrix changes, and Phase 4.2 setup.
 
 ---
 
@@ -14,9 +14,22 @@
   npm run build
   npm test -- --silent
   ```
+- Verified backend result after diagnosis:
+  - `npm run build`: passes.
+  - `npm test -- --silent`: passes, 20 suites / 91 tests.
+- Frontend verification:
+  - `cd client; npm exec -- tsc -b`: passes.
+  - `cd client; npm run build`: passes under Node `v22.22.2` after reinstalling frontend dependencies with optional native packages.
+  - `cd client; npm run lint`: fails on existing lint debt, mostly explicit `any`, React hook rules, static components declared during render, and `useSocket` returning `socketRef.current`.
+- Environment setup update:
+  - Node `v22.22.2` is installed, but this Codex shell still resolves `node` through `fnm` to `v20.20.2` unless Node 22 is forced into `PATH`.
+  - Verified command prefix in this session: `PATH=/home/bdgibby/.local/share/fnm/node-versions/v22.22.2/installation/bin:$PATH`.
+  - Root dependencies were reinstalled and Prisma was regenerated successfully.
+  - Prisma packages are aligned on `7.7.0`: `prisma`, `@prisma/client`, and `@prisma/adapter-pg`.
 - **New Core Engine Components:**
   - `Heartbeat`: A subscriber-based timing system replacing the procedural game loop.
   - `PresenceService`: A character-centric presence and movement orchestrator.
+  - `PlayerSyncCoordinator`: Transactional ECS-to-DB player snapshot persistence for disconnects and periodic syncs.
 
 ---
 
@@ -90,14 +103,53 @@ The project has moved from a shallow procedural model to a **Deep Module** archi
    - Refactored `MissionService` to receive objective updates from the ECS and persist progress to the database.
    - Updated `AuditLogger` and `MissionRepository` to support new objective tracking mechanics.
 
+9. **ECS Lifecycle and Garbage Collection (Phase 4.0):**
+   - Implemented `EntityCleanupSystem` to automatically reap dead NPCs, empty combat sessions, and abandoned Matrix nodes from memory.
+   - Created `PlayerSyncCoordinator` to manage transactional character persistence.
+   - **Redundancy:** Introduced a "Snapshot-First" disconnect flow. Character entities are only destroyed from memory *after* a successful database transaction is confirmed, preventing data loss and duplication glitches.
+   - Integrated periodic state checkpointing (every 20 ticks) for all active players.
+   - Updated UI to group identical entity names with counts (e.g., "Security Guard (3)") for better readability.
+
+10. **Diagnosis Hardening Pass (2026-05-09):**
+   - Fixed bootstrap wiring drift: `MatrixService` now receives the shared `EcsRegistry` and `MoveDispatcher`; `CombatService` receives `PlayerSyncCoordinator`; `SocketHub` receives the sync coordinator.
+   - Replaced stale `SecurityPatrol` calls to removed DB-backed combat session APIs with `CombatService.triggerSecurityAlarm`, which mutates ECS combat sessions directly.
+   - Fixed Matrix jack-in lifecycle:
+     - Persists the real DB Matrix node id to `Character.activeNodeId`.
+     - Returns a complete Matrix node view with identity and alert/security state.
+     - Preserves the character's physical room `Position` so disconnect snapshots do not try to persist an ECS node id into `currentRoomId`.
+   - Added ownership checks for ECS-backed Matrix actions so one account cannot drive another account's active Decker entity.
+   - Tightened disconnect handling:
+     - Final snapshot audit rows are written inside the same Prisma transaction as the character update.
+     - Socket presence is removed even if snapshot persistence fails, while the ECS entity remains in memory for recovery.
+   - Tightened mission completion:
+     - `completeMission` now verifies the mission belongs to the requesting character.
+     - Inactive missions cannot be completed again.
+     - Successful completion marks the mission `COMPLETED`.
+   - Added regression tests:
+     - `tests/matrix/matrix.service.test.ts`
+     - `tests/engine/player-sync-coordinator.test.ts`
+     - `tests/mission/mission.service.test.ts`
+   - Frontend cleanup: `GameView` now removes its `matrix_data` socket handler during effect cleanup.
+
+11. **Phase 4.2 Start (2026-05-09):**
+   - Matrix ICE now materializes into ECS when `MatrixService.getOrCreateEcsNode` loads a DB Matrix node.
+   - Matrix node views now expose active ICE with stable DB ids plus ECS entity ids, health, identity, and type data.
+   - `data spike <ice-id>` now accepts a DB ICE id from the node view and resolves it to the live ECS ICE entity in the decker's active node.
+   - Accepted missions now attach `MissionTargetComponent` to spawned ECS NPC targets when generated `spawnData` resolves to a known room and mob template.
+   - Added regression coverage for Matrix ICE spawning/data spike resolution and mission target attachment.
+
 ---
 
-## 4. Immediate Next Steps (Phase 4.0)
+## 4. Immediate Next Steps (Phase 4.2)
 
-**Final Refinement and Polish**
-The core engine, combat, matrix, and mission systems are now all operating on a high-performance ECS architecture.
-- **Goal:** Perform a final audit of the codebase for "cumulative overload" risks, ensure all new systems have adequate error handling, and polish the UI interactions.
-- **Task:** review resource cleanup in ECS (e.g., destroying entities when missions end), and add more complex mission templates that leverage the full power of the new engine.
+**Mission and Matrix ECS Completion**
+The diagnosis pass found the lifecycle foundation viable, but two gameplay loops are still only partially connected end to end.
+
+- **Mission targets:** Accepted missions now attach generated NPC targets to live ECS entities when rooms/templates resolve. Remaining work: expand this beyond NPC assassination targets into Matrix-node objectives and other objective types.
+- **Matrix ICE:** DB-backed Matrix ICE now spawns into ECS and `data spike` accepts stable DB ICE ids. Remaining work: persist ICE HP/alert changes back to the database when ECS state changes should survive cleanup/restart.
+- **Snapshot history/admin tooling:** The transaction log is now safer, but there is still no admin-facing snapshot history view.
+- **Frontend maintenance:** Client typecheck and production build now pass under Node 22. Remaining frontend maintenance is lint debt in `client/src`.
+- **Line ending / diff hygiene:** The working tree has broad pre-existing churn across many files. Normalize review scope before a PR to avoid burying functional changes in whitespace noise.
 
 
 ---
@@ -121,4 +173,11 @@ We have identified the path forward for high-scale performance:
 ## 7. Local Run Notes
 Backend: `npm start`
 Frontend: `cd client; npm run dev`
-Verification: `npm test`
+Verification:
+- Backend: `npm run build`; `npm test -- --silent`
+- Frontend typecheck: `cd client; npm exec -- tsc -b`
+- Frontend bundle: `cd client; npm run build` under Node 22 with dependencies installed for the current platform
+- Current shell note: if `node -v` reports `v20.20.2`, prepend Node 22 explicitly:
+  ```bash
+  PATH=/home/bdgibby/.local/share/fnm/node-versions/v22.22.2/installation/bin:$PATH <command>
+  ```

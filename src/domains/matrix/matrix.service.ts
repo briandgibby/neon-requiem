@@ -10,14 +10,33 @@ import {
   IdentityComponent, 
   PlayerIdComponent,
   HealthComponent,
+  IceComponent,
   StunComponent,
   ApComponent,
   AttributesComponent,
   CombatStatusComponent,
-  PositionComponent,
-  IceComponent
+  PositionComponent
 } from '../../engine/ecs/components';
 import { MAX_AP } from '../../shared/constants';
+
+interface MatrixNodeView {
+  id: string;
+  nodeId: string;
+  name?: string;
+  slug?: string;
+  securityLevel: number;
+  alertLevel: AlertLevel;
+  linkedRoomId: string | null;
+  activeIC: {
+    id: string;
+    entityId: string;
+    name?: string;
+    slug?: string;
+    type: IceComponent['type'];
+    currentHp: number;
+    maxHp: number;
+  }[];
+}
 
 export class MatrixService {
   constructor(
@@ -25,6 +44,115 @@ export class MatrixService {
     private readonly ecsRegistry: EcsRegistry,
     private readonly moveDispatcher: MoveDispatcher
   ) {}
+
+  private getEcsNodeView(nodeEntityId: string): MatrixNodeView | null {
+    const node = this.ecsRegistry.getComponent<MatrixNodeComponent>(nodeEntityId, ComponentTypes.MatrixNode);
+    if (!node) return null;
+
+    const identity = this.ecsRegistry.getComponent<IdentityComponent>(nodeEntityId, ComponentTypes.Identity);
+
+    const iceIds = this.ecsRegistry.getEntitiesWith([ComponentTypes.Ice, ComponentTypes.Position]);
+    const activeIC = iceIds.flatMap((iceEntityId) => {
+      const position = this.ecsRegistry.getComponent<PositionComponent>(iceEntityId, ComponentTypes.Position);
+      if (position?.roomId !== nodeEntityId) return [];
+
+      const ice = this.ecsRegistry.getComponent<IceComponent>(iceEntityId, ComponentTypes.Ice);
+      const iceIdentity = this.ecsRegistry.getComponent<IdentityComponent>(iceEntityId, ComponentTypes.Identity);
+      const health = this.ecsRegistry.getComponent<HealthComponent>(iceEntityId, ComponentTypes.Health);
+      if (!ice || !health) return [];
+
+      return [{
+        id: ice.iceId ?? iceEntityId,
+        entityId: iceEntityId,
+        name: iceIdentity?.name,
+        slug: iceIdentity?.slug,
+        type: ice.type,
+        currentHp: health.current,
+        maxHp: health.max,
+      }];
+    });
+
+    return {
+      id: node.nodeId,
+      nodeId: node.nodeId,
+      name: identity?.name,
+      slug: identity?.slug,
+      securityLevel: node.securityLevel,
+      alertLevel: node.alertLevel as AlertLevel,
+      linkedRoomId: node.linkedRoomId,
+      activeIC,
+    };
+  }
+
+  private spawnIceForNode(nodeEntityId: string, activeIC: any[] = []): void {
+    const existingIceIds = this.ecsRegistry.getEntitiesWith([ComponentTypes.Ice, ComponentTypes.Position]);
+    const existingIceByDbId = new Set(
+      existingIceIds.flatMap((iceEntityId) => {
+        const position = this.ecsRegistry.getComponent<PositionComponent>(iceEntityId, ComponentTypes.Position);
+        if (position?.roomId !== nodeEntityId) return [];
+
+        const ice = this.ecsRegistry.getComponent<IceComponent>(iceEntityId, ComponentTypes.Ice);
+        return ice?.iceId ? [ice.iceId] : [];
+      })
+    );
+
+    for (const iceData of activeIC) {
+      if (existingIceByDbId.has(iceData.id)) continue;
+
+      const iceEntityId = this.ecsRegistry.createEntity();
+      this.ecsRegistry.addComponent<IceComponent>(iceEntityId, ComponentTypes.Ice, {
+        iceId: iceData.id,
+        type: iceData.type,
+        attack: iceData.attack,
+        defense: iceData.defense,
+      });
+      this.ecsRegistry.addComponent<HealthComponent>(iceEntityId, ComponentTypes.Health, {
+        current: iceData.currentHp,
+        max: iceData.hp,
+        lastRegenAt: Date.now(),
+      });
+      this.ecsRegistry.addComponent<PositionComponent>(iceEntityId, ComponentTypes.Position, {
+        roomId: nodeEntityId,
+      });
+      this.ecsRegistry.addComponent<IdentityComponent>(iceEntityId, ComponentTypes.Identity, {
+        name: iceData.name,
+        slug: iceData.slug,
+      });
+    }
+  }
+
+  private resolveIceTargetId(activeNodeEntityId: string, requestedIceId: string): string {
+    const directTarget = this.ecsRegistry.getComponent<IceComponent>(requestedIceId, ComponentTypes.Ice);
+    if (directTarget) {
+      const position = this.ecsRegistry.getComponent<PositionComponent>(requestedIceId, ComponentTypes.Position);
+      if (!position || position.roomId === activeNodeEntityId) return requestedIceId;
+    }
+
+    const matchingIceEntityId = this.ecsRegistry.getEntityByComponent<IceComponent>(
+      ComponentTypes.Ice,
+      (ice) => ice.iceId === requestedIceId
+    );
+    if (!matchingIceEntityId) throw new NotFoundError('ICE');
+
+    const position = this.ecsRegistry.getComponent<PositionComponent>(matchingIceEntityId, ComponentTypes.Position);
+    if (position?.roomId !== activeNodeEntityId) throw new NotFoundError('ICE');
+
+    return matchingIceEntityId;
+  }
+
+  private getOwnedPlayerEntity(characterId: string, accountId: string): string | null {
+    const entityId = this.ecsRegistry.getEntityByComponent<PlayerIdComponent>(
+      ComponentTypes.PlayerId,
+      (p) => p.characterId === characterId
+    );
+
+    if (!entityId) return null;
+
+    const player = this.ecsRegistry.getComponent<PlayerIdComponent>(entityId, ComponentTypes.PlayerId);
+    if (!player || player.accountId !== accountId) throw new NotFoundError('Character');
+
+    return entityId;
+  }
 
   private async applyNeuralDamage(characterId: string, stunAmount: number, physAmount: number = 0) {
     const character = await this.matrixRepo.getCharacterWithEquipment(characterId);
@@ -71,8 +199,8 @@ export class MatrixService {
         name: nodeData.name,
         slug: nodeData.slug,
       });
-      
-      // We could spawn ICE entities here based on nodeData.activeIC
+
+      this.spawnIceForNode(nodeEntityId, nodeData.activeIC);
     }
 
     return nodeEntityId;
@@ -92,9 +220,10 @@ export class MatrixService {
     }
 
     const nodeEntityId = await this.getOrCreateEcsNode(roomId);
-    const node = this.ecsRegistry.getComponent<IdentityComponent>(nodeEntityId, ComponentTypes.Identity);
+    const node = this.getEcsNodeView(nodeEntityId);
+    if (!node) throw new ValidationError('Active Matrix Node not found');
 
-    await this.matrixRepo.updateCharacterLink(characterId, (node as any).id, true);
+    await this.matrixRepo.updateCharacterLink(characterId, node.id, true);
 
     // Setup ECS Decker Persona
     let entityId = this.ecsRegistry.getEntityByComponent<PlayerIdComponent>(
@@ -108,6 +237,7 @@ export class MatrixService {
        this.ecsRegistry.addComponent<IdentityComponent>(entityId, ComponentTypes.Identity, { name: character.name, slug: character.name.toLowerCase() });
        this.ecsRegistry.addComponent<HealthComponent>(entityId, ComponentTypes.Health, { current: character.currentHp, max: character.maxHp, lastRegenAt: Date.now() });
        this.ecsRegistry.addComponent<StunComponent>(entityId, ComponentTypes.Stun, { current: character.currentStun, max: character.maxStun, lastRegenAt: Date.now() });
+       this.ecsRegistry.addComponent<PositionComponent>(entityId, ComponentTypes.Position, { roomId });
        this.ecsRegistry.addComponent<AttributesComponent>(entityId, ComponentTypes.Attributes, {
          level: character.level, body: character.body, agility: character.agility, dexterity: character.dexterity,
          strength: character.strength, logic: character.logic, intuition: character.intuition,
@@ -136,7 +266,6 @@ export class MatrixService {
       biofeedbackBuffer: buffer
     });
 
-    this.ecsRegistry.addComponent<PositionComponent>(entityId, ComponentTypes.Position, { roomId: nodeEntityId });
     this.ecsRegistry.addComponent<CombatStatusComponent>(entityId, ComponentTypes.CombatStatus, { state: 'engaged', isPetActive: false });
     this.ecsRegistry.addComponent<ApComponent>(entityId, ComponentTypes.Ap, { current: MAX_AP, max: MAX_AP, lastRegenAt: Date.now(), recoveryTicks: 0 });
 
@@ -179,9 +308,12 @@ export class MatrixService {
   async getActiveNode(characterId: string, accountId?: string) {
     const entityId = this.ecsRegistry.getEntityByComponent<PlayerIdComponent>(ComponentTypes.PlayerId, p => p.characterId === characterId);
     if (entityId) {
+       const player = this.ecsRegistry.getComponent<PlayerIdComponent>(entityId, ComponentTypes.PlayerId);
+       if (accountId && player?.accountId !== accountId) return null;
+
        const decker = this.ecsRegistry.getComponent<DeckerComponent>(entityId, ComponentTypes.Decker);
        if (decker) {
-          const node = this.ecsRegistry.getComponent<MatrixNodeComponent>(decker.activeNodeEntityId, ComponentTypes.MatrixNode);
+          const node = this.getEcsNodeView(decker.activeNodeEntityId);
           if (node) return node;
        }
     }
@@ -193,7 +325,7 @@ export class MatrixService {
   }
 
   async performHacking(characterId: string, accountId: string, type: 'brute' | 'sleaze'): Promise<any> {
-    const actorId = this.ecsRegistry.getEntityByComponent<PlayerIdComponent>(ComponentTypes.PlayerId, p => p.characterId === characterId);
+    const actorId = this.getOwnedPlayerEntity(characterId, accountId);
     if (!actorId) throw new ValidationError('Not currently jacked into a node');
 
     const result = await this.moveDispatcher.dispatch(
@@ -211,16 +343,18 @@ export class MatrixService {
   }
 
   async dataSpike(characterId: string, accountId: string, iceId: string): Promise<any> {
-    const actorId = this.ecsRegistry.getEntityByComponent<PlayerIdComponent>(ComponentTypes.PlayerId, p => p.characterId === characterId);
+    const actorId = this.getOwnedPlayerEntity(characterId, accountId);
     if (!actorId) throw new ValidationError('Not jacked in');
 
-    // Need to find the ICE entity ID
-    const targetId = this.ecsRegistry.getEntityByComponent<IceComponent>(ComponentTypes.Ice, c => (c as any).id === iceId); // Assumes we stored DB id somewhere, needs fixing later if we spawn ICE properly. Let's assume iceId passed IS the EntityId for now.
+    const decker = this.ecsRegistry.getComponent<DeckerComponent>(actorId, ComponentTypes.Decker);
+    if (!decker) throw new ValidationError('Not jacked in');
+
+    const targetId = this.resolveIceTargetId(decker.activeNodeEntityId, iceId);
 
     const result = await this.moveDispatcher.dispatch(
       'data-spike',
       actorId,
-      iceId, // Assume iceId is EntityId
+      targetId,
       { registry: this.ecsRegistry }
     );
 

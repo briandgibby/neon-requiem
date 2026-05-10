@@ -23,13 +23,7 @@ export class SecurityPatrol implements Tickable {
 
     for (const room of dirtyRooms) {
       this.logger.warn({ roomId: room.id, roomSlug: room.slug }, 'Security patrol discovered a messy room! Triggering alarm.');
-      
-      const session = await this.combatService.getOrCreateSession(room.id);
-      session.alarmState = 'RED';
-      session.backupCalled = true;
-      session.turnsUntilReinforcements = 1; // Immediate backup
-      
-      await this.combatService.saveSession(session);
+      await this.combatService.triggerSecurityAlarm(room.id);
     }
 
     if (dirtyRooms.length > 0) {

@@ -71,6 +71,7 @@ describe('IDOR Vulnerability Fix Verification', () => {
       { castSpell: jest.fn() } as any,
       {} as any,
       mockEcsRegistry as any,
+      {} as any,
       {} as any
     );
 
@@ -95,7 +96,8 @@ describe('IDOR Vulnerability Fix Verification', () => {
       { castSpell: jest.fn() } as any,
       {} as any,
       mockEcsRegistry as any,
-      { dispatch: jest.fn() } as any
+      { dispatch: jest.fn() } as any,
+      {} as any
     );
 
     await expect(combatService.performMove({

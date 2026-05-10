@@ -3,11 +3,13 @@ import { NotFoundError, ValidationError } from '../../shared/errors';
 import { STARTING_ROOM_SHADOW, STARTING_ROOM_CORP } from '../../shared/constants';
 import { MissionRepository } from './mission.repository';
 import { MissionGenerator } from './mission.generator';
-import { AcceptMissionInput } from './mission.types';
+import { AcceptMissionInput, MissionInstanceData, MissionObjective } from './mission.types';
 import { CharacterRepository } from '../character/character.repository';
 import { WorldRepository } from '../world/world.repository';
 import { EcsRegistry } from '../../engine/ecs/registry';
 import { ComponentTypes, MissionTargetComponent } from '../../engine/ecs/components';
+import { MobRepository, MobTemplateRecord } from '../combat/mob.repository';
+import { MobFactory } from '../../engine/ecs/factories/mob-factory';
 
 export class MissionService {
   constructor(
@@ -16,8 +18,51 @@ export class MissionService {
     private readonly charRepo: CharacterRepository,
     private readonly worldRepo: WorldRepository,
     private readonly missionGen: MissionGenerator,
-    private readonly ecsRegistry: EcsRegistry
+    private readonly ecsRegistry: EcsRegistry,
+    private readonly mobRepo?: MobRepository
   ) {}
+
+  private getGoalType(objective: MissionObjective): MissionTargetComponent['goalType'] {
+    switch (objective.type) {
+      case 'ELIMINATE_TARGET':
+        return 'KILL';
+      case 'HACK_NODE':
+      case 'BREACH_NODE':
+        return 'HACK';
+      case 'STEAL_ITEM':
+        return 'COLLECT';
+      default:
+        return 'VISIT';
+    }
+  }
+
+  private async attachMissionTargets(missionId: string, targetData: MissionInstanceData): Promise<void> {
+    if (!this.mobRepo) return;
+
+    for (const spawn of targetData.spawnData) {
+      if (!spawn.isTarget || spawn.objectiveIndex === undefined) continue;
+
+      const objective = targetData.objectives[spawn.objectiveIndex];
+      if (!objective) continue;
+
+      const room = await this.worldRepo.findRoomBySlug(spawn.roomSlug);
+      const template = await this.mobRepo.findBySlug(spawn.templateSlug);
+      if (!room || !template) continue;
+
+      const entityId = MobFactory.createFromTemplate(
+        this.ecsRegistry,
+        template as MobTemplateRecord,
+        room.id
+      );
+
+      this.ecsRegistry.addComponent<MissionTargetComponent>(entityId, ComponentTypes.MissionTarget, {
+        missionId,
+        objectiveIndex: spawn.objectiveIndex,
+        goalType: this.getGoalType(objective),
+        isCompleted: false,
+      });
+    }
+  }
 
   async updateObjectiveProgress(missionId: string, objectiveIndex: number) {
     const mission = await this.missionRepo.findActiveMissionById(missionId);
@@ -67,6 +112,8 @@ export class MissionService {
       targetData
     });
 
+    await this.attachMissionTargets(activeMission.id, targetData);
+
     return {
       success: true,
       message: `Contract accepted: ${template.name}. Prepare for deployment.`,
@@ -78,6 +125,10 @@ export class MissionService {
   async completeMission(characterId: string, accountId: string, missionId: string, successRating: number) {
     const character = await this.charRepo.findByIdAndAccount(characterId, accountId);
     if (!character) throw new NotFoundError('Character');
+
+    const mission = await this.missionRepo.findActiveMissionById(missionId);
+    if (!mission || mission.leaderId !== character.id) throw new NotFoundError('Mission');
+    if (mission.status !== 'ACTIVE') throw new ValidationError('Mission is not active');
 
     // 1. Calculate Payout (Placeholder)
     const basePayout = 1000;
@@ -99,6 +150,8 @@ export class MissionService {
     if (safeRoom) {
       await this.charRepo.updateCharacter(characterId, { currentRoomId: safeRoom.id });
     }
+
+    await this.missionRepo.updateMissionStatus(missionId, 'COMPLETED');
 
     return {
       success: true,

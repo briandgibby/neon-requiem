@@ -109,6 +109,7 @@ export interface MatrixNodeComponent {
 }
 
 export interface IceComponent {
+  iceId?: string;
   type: 'WHITE' | 'GRAY' | 'BLACK';
   attack: number;
   defense: number;

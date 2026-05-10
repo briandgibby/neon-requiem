@@ -27,6 +27,8 @@ import {
   PlayerIdComponent,
 } from '../../engine/ecs/components';
 
+import { PlayerSyncCoordinator } from '../../engine/player-sync-coordinator';
+
 export class CombatService implements Tickable {
   readonly name = 'CombatService';
   readonly frequency = 1; // Process combat every tick
@@ -40,13 +42,14 @@ export class CombatService implements Tickable {
     private readonly matrixService: MatrixService,
     private readonly ecsRegistry: EcsRegistry,
     private readonly moveDispatcher: MoveDispatcher,
+    private readonly syncCoordinator: PlayerSyncCoordinator,
   ) {}
 
   async onTick(_tickCount: number): Promise<void> {
     // ECS Systems now handle the simulation tick independently.
     // We only need to sync state to DB if we want periodic persistence.
-    if (_tickCount % 10 === 0) {
-      await this.syncEcsToDb();
+    if (_tickCount % 20 === 0) {
+      await this.syncCoordinator.syncAllPlayers();
     }
   }
 
@@ -70,6 +73,20 @@ export class CombatService implements Tickable {
     }
 
     return sessionId;
+  }
+
+  async triggerSecurityAlarm(roomId: string): Promise<void> {
+    const sessionId = await this.getOrCreateEcsSession(roomId);
+    const session = this.ecsRegistry.getComponent<CombatSessionComponent>(
+      sessionId,
+      ComponentTypes.CombatSession
+    );
+
+    if (!session) throw new ValidationError('Combat session not found');
+
+    session.alarmState = 'RED';
+    session.backupCalled = true;
+    session.turnsUntilReinforcements = 1;
   }
 
   async joinCombat(characterId: string, accountId: string, roomId: string): Promise<void> {
@@ -178,25 +195,7 @@ export class CombatService implements Tickable {
       { registry: this.ecsRegistry }
     );
 
-    await this.syncEcsToDb();
+    await this.syncCoordinator.syncAllPlayers();
     return result;
-  }
-
-  private async syncEcsToDb() {
-    const playerEntities = this.ecsRegistry.getEntitiesWith([ComponentTypes.PlayerId]);
-    for (const entityId of playerEntities) {
-      const playerId = this.ecsRegistry.getComponent<PlayerIdComponent>(entityId, ComponentTypes.PlayerId);
-      const health = this.ecsRegistry.getComponent<HealthComponent>(entityId, ComponentTypes.Health);
-      const stun = this.ecsRegistry.getComponent<StunComponent>(entityId, ComponentTypes.Stun);
-      const mana = this.ecsRegistry.getComponent<ManaComponent>(entityId, ComponentTypes.Mana);
-
-      if (playerId && health && stun && mana) {
-        await this.charRepo.updateCharacter(playerId.characterId, {
-          currentHp: health.current,
-          currentStun: stun.current,
-          currentMana: mana.current,
-        });
-      }
-    }
   }
 }
