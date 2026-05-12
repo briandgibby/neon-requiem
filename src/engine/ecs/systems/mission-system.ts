@@ -29,10 +29,7 @@ export class MissionSystem implements Tickable {
         }
       } else if (target.goalType === 'HACK') {
         const node = this.registry.getComponent<MatrixNodeComponent>(targetId, ComponentTypes.MatrixNode);
-        // Completion criteria for hack: Alert Level RED + something else? 
-        // Or maybe a specific 'isHacked' flag we should add to MatrixNodeComponent.
-        // For now, let's say alertLevel RED constitutes a successful breach for basic objectives.
-        if (node && node.alertLevel === 'RED') {
+        if (node && target.hackThreshold !== undefined && node.breachProgress >= target.hackThreshold) {
           isMet = true;
         }
       }

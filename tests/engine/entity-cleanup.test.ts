@@ -52,7 +52,7 @@ describe('EntityCleanupSystem', () => {
   it('destroys abandoned Matrix nodes and their ICE', async () => {
     const nodeId = registry.createEntity();
     registry.addComponent<MatrixNodeComponent>(nodeId, ComponentTypes.MatrixNode, {
-      nodeId: 'db-node', securityLevel: 5, alertLevel: 'GREEN', linkedRoomId: 'room-1'
+      nodeId: 'db-node', securityLevel: 5, alertLevel: 'GREEN', linkedRoomId: 'room-1', breachProgress: 0,
     });
 
     const iceId = registry.createEntity();

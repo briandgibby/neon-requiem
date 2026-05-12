@@ -188,6 +188,7 @@ describe('MatrixService', () => {
       securityLevel: 4,
       alertLevel: 'GREEN',
       linkedRoomId: 'physical-room-1',
+      breachProgress: 0,
     });
 
     const entityId = registry.createEntity();
@@ -201,6 +202,7 @@ describe('MatrixService', () => {
       sleaze: 5,
       firewall: 5,
       biofeedbackBuffer: 5,
+      overwatchScore: 0,
     });
     registry.addComponent<AttributesComponent>(entityId, ComponentTypes.Attributes, {
       level: 1,
