@@ -12,7 +12,7 @@ describe('Matrix ECS', () => {
     it('decays YELLOW alert to GREEN sometimes', async () => {
       jest.spyOn(Math, 'random').mockReturnValue(0.05); // Will trigger decay (0.05 < 0.1)
       const registry = new EcsRegistry();
-      const system = new MatrixTickSystem(registry);
+      const system = new MatrixTickSystem(registry, { updateNodeAlert: jest.fn().mockResolvedValue(undefined) } as any);
 
       const nodeId = registry.createEntity();
       registry.addComponent<MatrixNodeComponent>(nodeId, ComponentTypes.MatrixNode, {
@@ -34,7 +34,7 @@ describe('Matrix ECS', () => {
     it('does not decay RED alerts', async () => {
       jest.spyOn(Math, 'random').mockReturnValue(0.05);
       const registry = new EcsRegistry();
-      const system = new MatrixTickSystem(registry);
+      const system = new MatrixTickSystem(registry, { updateNodeAlert: jest.fn().mockResolvedValue(undefined) } as any);
 
       const nodeId = registry.createEntity();
       registry.addComponent<MatrixNodeComponent>(nodeId, ComponentTypes.MatrixNode, {
