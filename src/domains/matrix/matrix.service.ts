@@ -360,11 +360,25 @@ export class MatrixService {
       { registry: this.ecsRegistry }
     );
 
+    // Flush ICE HP to DB
+    const targetIce = this.ecsRegistry.getComponent<IceComponent>(targetId, ComponentTypes.Ice);
+    const targetHealth = this.ecsRegistry.getComponent<HealthComponent>(targetId, ComponentTypes.Health);
+    if (targetIce?.iceId && targetHealth) {
+      try {
+        await this.matrixRepo.updateIceHp(targetIce.iceId, targetHealth.current);
+      } catch (_err) {
+        // Non-fatal
+      }
+    }
+
+    // Increment OS stub
+    decker.overwatchScore += 1;
+
     return {
       success: result.success,
       message: result.message,
       damageDealt: result.data.damageDealt,
-      nodeAlertLevel: result.data.newAlertLevel
+      nodeAlertLevel: result.data.newAlertLevel,
     };
   }
 

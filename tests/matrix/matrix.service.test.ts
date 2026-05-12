@@ -242,4 +242,86 @@ describe('MatrixService', () => {
     await expect(service.performHacking('char-1', 'intruder-account', 'brute'))
       .rejects.toThrow(NotFoundError);
   });
+
+  describe('dataSpike', () => {
+    function buildDataSpikeEnv() {
+      const registry = new EcsRegistry();
+
+      const nodeEntityId = registry.createEntity();
+      registry.addComponent<MatrixNodeComponent>(nodeEntityId, ComponentTypes.MatrixNode, {
+        nodeId: 'node-db-1',
+        securityLevel: 3,
+        alertLevel: 'GREEN',
+        linkedRoomId: 'room-1',
+        breachProgress: 0,
+      });
+
+      const deckerEntityId = registry.createEntity();
+      registry.addComponent<PlayerIdComponent>(deckerEntityId, ComponentTypes.PlayerId, {
+        characterId: 'char-1',
+        accountId: 'account-1',
+      });
+      registry.addComponent<DeckerComponent>(deckerEntityId, ComponentTypes.Decker, {
+        activeNodeEntityId: nodeEntityId,
+        attack: 6, sleaze: 5, firewall: 4, biofeedbackBuffer: 3, overwatchScore: 0,
+      });
+      registry.addComponent<AttributesComponent>(deckerEntityId, ComponentTypes.Attributes, {
+        level: 1, body: 3, agility: 4, dexterity: 4, strength: 3,
+        logic: 6, intuition: 5, willpower: 4, charisma: 2, luck: 3,
+      });
+      registry.addComponent<ApComponent>(deckerEntityId, ComponentTypes.Ap, {
+        current: 10, max: 10, lastRegenAt: Date.now(), recoveryTicks: 0,
+      });
+      registry.addComponent<CombatStatusComponent>(deckerEntityId, ComponentTypes.CombatStatus, {
+        state: 'engaged', isPetActive: false,
+      });
+
+      const iceEntityId = registry.createEntity();
+      registry.addComponent<IceComponent>(iceEntityId, ComponentTypes.Ice, {
+        iceId: 'ice-db-1', type: 'WHITE', attack: 3, defense: 2,
+      });
+      registry.addComponent<HealthComponent>(iceEntityId, ComponentTypes.Health, {
+        current: 20, max: 20, lastRegenAt: Date.now(),
+      });
+      registry.addComponent<PositionComponent>(iceEntityId, ComponentTypes.Position, {
+        roomId: nodeEntityId,
+      });
+
+      const matrixRepo = {
+        updateIceHp: jest.fn().mockResolvedValue(undefined),
+        updateNodeAlert: jest.fn().mockResolvedValue(undefined),
+        getCharacterWithEquipment: jest.fn(),
+        findNodeByRoomId: jest.fn(),
+        updateCharacterLink: jest.fn(),
+      };
+      const dispatcher = new MoveDispatcher();
+      dispatcher.register(new MatrixDataSpikeExecutor());
+
+      const service = new MatrixService(matrixRepo as any, registry, dispatcher);
+
+      return { service, registry, matrixRepo, deckerEntityId, iceEntityId, nodeEntityId };
+    }
+
+    it('flushes ICE HP to DB after a data spike', async () => {
+      const { service, matrixRepo, iceEntityId, registry } = buildDataSpikeEnv();
+
+      jest.spyOn(Math, 'random').mockReturnValue(0.99);
+      await service.dataSpike('char-1', 'account-1', 'ice-db-1');
+      jest.restoreAllMocks();
+
+      const health = registry.getComponent<HealthComponent>(iceEntityId, ComponentTypes.Health);
+      expect(matrixRepo.updateIceHp).toHaveBeenCalledWith('ice-db-1', health!.current);
+    });
+
+    it('increments overwatchScore on the decker after a data spike', async () => {
+      const { service, registry, deckerEntityId } = buildDataSpikeEnv();
+
+      jest.spyOn(Math, 'random').mockReturnValue(0.99);
+      await service.dataSpike('char-1', 'account-1', 'ice-db-1');
+      jest.restoreAllMocks();
+
+      const decker = registry.getComponent<DeckerComponent>(deckerEntityId, ComponentTypes.Decker);
+      expect(decker!.overwatchScore).toBe(1);
+    });
+  });
 });
