@@ -325,6 +325,61 @@ describe('MatrixService', () => {
     });
   });
 
+  describe('getOrCreateEcsNode — onNodeCreated callback', () => {
+    it('calls onNodeCreated with roomId and the new node entityId', async () => {
+      const registry = new EcsRegistry();
+      const onNodeCreated = jest.fn().mockResolvedValue(undefined);
+
+      const matrixRepo = {
+        findNodeByRoomId: jest.fn().mockResolvedValue({
+          id: 'node-db-1',
+          name: 'Corp Host',
+          slug: 'corp-host',
+          securityLevel: 3,
+          alertLevel: 'GREEN',
+          activeIC: [],
+        }),
+        updateIceHp: jest.fn(),
+        updateNodeAlert: jest.fn(),
+        getCharacterWithEquipment: jest.fn(),
+        updateCharacterLink: jest.fn(),
+      };
+
+      const dispatcher = new MoveDispatcher();
+      const service = new MatrixService(matrixRepo as any, registry, dispatcher, onNodeCreated);
+
+      await service.getOrCreateEcsNode('room-uuid-1');
+
+      expect(onNodeCreated).toHaveBeenCalledWith('room-uuid-1', expect.any(String));
+    });
+
+    it('does NOT call onNodeCreated when the node entity already exists', async () => {
+      const registry = new EcsRegistry();
+      const onNodeCreated = jest.fn().mockResolvedValue(undefined);
+
+      const matrixRepo = {
+        findNodeByRoomId: jest.fn().mockResolvedValue({
+          id: 'node-db-1', name: 'Corp Host', slug: 'corp-host',
+          securityLevel: 3, alertLevel: 'GREEN', activeIC: [],
+        }),
+        updateIceHp: jest.fn(),
+        updateNodeAlert: jest.fn(),
+        getCharacterWithEquipment: jest.fn(),
+        updateCharacterLink: jest.fn(),
+      };
+
+      const dispatcher = new MoveDispatcher();
+      const service = new MatrixService(matrixRepo as any, registry, dispatcher, onNodeCreated);
+
+      await service.getOrCreateEcsNode('room-uuid-1');
+      onNodeCreated.mockClear();
+
+      await service.getOrCreateEcsNode('room-uuid-1');
+
+      expect(onNodeCreated).not.toHaveBeenCalled();
+    });
+  });
+
   describe('performHacking', () => {
     function buildHackingEnv(dispatchSuccess: boolean = true) {
       const registry = new EcsRegistry();

@@ -19,6 +19,8 @@ import {
 } from '../../engine/ecs/components';
 import { MAX_AP } from '../../shared/constants';
 
+type NodeCreatedCallback = (roomId: string, nodeEntityId: string) => Promise<void>;
+
 interface MatrixNodeView {
   id: string;
   nodeId: string;
@@ -42,7 +44,8 @@ export class MatrixService {
   constructor(
     private readonly matrixRepo: MatrixRepository,
     private readonly ecsRegistry: EcsRegistry,
-    private readonly moveDispatcher: MoveDispatcher
+    private readonly moveDispatcher: MoveDispatcher,
+    private readonly onNodeCreated?: NodeCreatedCallback,
   ) {}
 
   private getEcsNodeView(nodeEntityId: string): MatrixNodeView | null {
@@ -202,6 +205,14 @@ export class MatrixService {
       });
 
       this.spawnIceForNode(nodeEntityId, nodeData.activeIC);
+
+      if (this.onNodeCreated) {
+        try {
+          await this.onNodeCreated(roomId, nodeEntityId);
+        } catch (_err) {
+          // Non-fatal
+        }
+      }
     }
 
     return nodeEntityId;

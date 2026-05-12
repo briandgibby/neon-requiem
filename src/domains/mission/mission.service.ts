@@ -103,6 +103,12 @@ export class MissionService {
     // 3. Generate the Instance
     const targetData = this.missionGen.generate(template, seed, partyComp);
 
+    // Resolve node target room slugs to DB room IDs so the callback can match by ID at jack-in
+    for (const nodeTarget of (targetData.nodeTargetData ?? [])) {
+      const room = await this.worldRepo.findRoomBySlug(nodeTarget.roomSlug);
+      if (room) nodeTarget.roomId = room.id;
+    }
+
     // 4. Persist Active Mission
     const activeMission = await this.missionRepo.createActiveMission({
       templateId: template.id,
