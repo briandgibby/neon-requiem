@@ -52,6 +52,7 @@ import { ShopService } from './domains/shop/shop.service';
 import { registerShopRoutes } from './domains/shop/shop.routes';
 import { AuditLogger } from './engine/audit-logger';
 import type { Socket } from 'socket.io';
+import { ComponentTypes, MissionTargetComponent } from './engine/ecs/components';
 import type { AuthPayload, Direction } from './shared/types';
 import type { JwtSigner } from './domains/auth/auth.types';
 
@@ -121,7 +122,29 @@ async function bootstrap() {
   registerWorldRoutes(app, worldService, authService);
 
   const matrixRepo = new MatrixRepository(db);
-  const matrixService = new MatrixService(matrixRepo, ecsRegistry, moveDispatcher);
+  const missionRepo = new MissionRepository(db);
+  const matrixService = new MatrixService(
+    matrixRepo,
+    ecsRegistry,
+    moveDispatcher,
+    async (roomId: string, nodeEntityId: string) => {
+      const missions = await missionRepo.findActiveMissionsByNodeRoom(roomId);
+      for (const mission of missions) {
+        const targetData = mission.targetData as any;
+        for (const nodeTarget of (targetData.nodeTargetData ?? [])) {
+          if (nodeTarget.roomId === roomId) {
+            ecsRegistry.addComponent<MissionTargetComponent>(nodeEntityId, ComponentTypes.MissionTarget, {
+              missionId: mission.id,
+              objectiveIndex: nodeTarget.objectiveIndex,
+              goalType: 'HACK',
+              hackThreshold: nodeTarget.hackThreshold,
+              isCompleted: false,
+            });
+          }
+        }
+      }
+    }
+  );
   registerMatrixRoutes(app, matrixService, authService);
 
   const magicRepo = new MagicRepository(db);
@@ -143,7 +166,6 @@ async function bootstrap() {
   registerCombatRoutes(app, combatService, authService);
 
   const auditLogger = new AuditLogger(db);
-  const missionRepo = new MissionRepository(db);
   const missionGen = new MissionGenerator();
   const missionService = new MissionService(auditLogger, missionRepo, charRepo, worldRepo, missionGen, ecsRegistry, mobRepo);
   registerMissionRoutes(app, missionService, authService);
@@ -158,7 +180,7 @@ async function bootstrap() {
   heartbeat.subscribe(new RegenSystem(ecsRegistry));
   heartbeat.subscribe(new CombatTickSystem(ecsRegistry));
   heartbeat.subscribe(new CombatReinforcementSystem(ecsRegistry, mobRepo));
-  heartbeat.subscribe(new MatrixTickSystem(ecsRegistry));
+  heartbeat.subscribe(new MatrixTickSystem(ecsRegistry, matrixRepo));
   heartbeat.subscribe(new IceAiSystem(ecsRegistry));
   heartbeat.subscribe(new MissionSystem(ecsRegistry, (missionId, index) => missionService.updateObjectiveProgress(missionId, index)));
   heartbeat.subscribe(new EntityCleanupSystem(ecsRegistry));
