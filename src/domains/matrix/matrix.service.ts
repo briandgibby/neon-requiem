@@ -333,14 +333,31 @@ export class MatrixService {
     const result = await this.moveDispatcher.dispatch(
       type,
       actorId,
-      actorId, // Self-targeted for now since they target the node they are in
+      actorId,
       { registry: this.ecsRegistry }
     );
+
+    // Flush alert and update breach progress
+    const decker = this.ecsRegistry.getComponent<DeckerComponent>(actorId, ComponentTypes.Decker);
+    if (decker) {
+      const node = this.ecsRegistry.getComponent<MatrixNodeComponent>(decker.activeNodeEntityId, ComponentTypes.MatrixNode);
+      if (node) {
+        try {
+          await this.matrixRepo.updateNodeAlert(node.nodeId, node.alertLevel);
+        } catch (_err) {
+          // Non-fatal
+        }
+        if (result.success) {
+          node.breachProgress += 1;
+        }
+      }
+      decker.overwatchScore += 1;
+    }
 
     return {
       success: result.success,
       message: result.message,
-      newAlertLevel: result.data.newAlertLevel
+      newAlertLevel: result.data.newAlertLevel,
     };
   }
 

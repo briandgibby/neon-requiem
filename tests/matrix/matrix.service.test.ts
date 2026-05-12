@@ -324,4 +324,97 @@ describe('MatrixService', () => {
       expect(decker!.overwatchScore).toBe(1);
     });
   });
+
+  describe('performHacking', () => {
+    function buildHackingEnv(dispatchSuccess: boolean = true) {
+      const registry = new EcsRegistry();
+
+      const nodeEntityId = registry.createEntity();
+      registry.addComponent<MatrixNodeComponent>(nodeEntityId, ComponentTypes.MatrixNode, {
+        nodeId: 'node-db-1',
+        securityLevel: 2,
+        alertLevel: 'GREEN',
+        linkedRoomId: 'room-1',
+        breachProgress: 0,
+      });
+
+      const deckerEntityId = registry.createEntity();
+      registry.addComponent<PlayerIdComponent>(deckerEntityId, ComponentTypes.PlayerId, {
+        characterId: 'char-1', accountId: 'account-1',
+      });
+      registry.addComponent<DeckerComponent>(deckerEntityId, ComponentTypes.Decker, {
+        activeNodeEntityId: nodeEntityId,
+        attack: 8, sleaze: 5, firewall: 4, biofeedbackBuffer: 3, overwatchScore: 0,
+      });
+
+      const matrixRepo = {
+        updateNodeAlert: jest.fn().mockResolvedValue(undefined),
+        updateIceHp: jest.fn().mockResolvedValue(undefined),
+        getCharacterWithEquipment: jest.fn(),
+        findNodeByRoomId: jest.fn(),
+        updateCharacterLink: jest.fn(),
+      };
+
+      const mockResult = {
+        success: dispatchSuccess,
+        message: dispatchSuccess ? 'Hack succeeded' : 'Resisted',
+        data: { newAlertLevel: 'RED' },
+      };
+      // Simulate the real executor: mutate node.alertLevel in ECS then return the result
+      const dispatcher = {
+        dispatch: jest.fn().mockImplementation(async () => {
+          const node = registry.getComponent<MatrixNodeComponent>(nodeEntityId, ComponentTypes.MatrixNode);
+          if (node) node.alertLevel = 'RED';
+          return mockResult;
+        }),
+      } as any;
+
+      const service = new MatrixService(matrixRepo as any, registry, dispatcher);
+
+      return { service, registry, matrixRepo, deckerEntityId, nodeEntityId };
+    }
+
+    it('flushes alert level to DB after brute/sleaze regardless of success', async () => {
+      const { service, matrixRepo } = buildHackingEnv(true);
+
+      await service.performHacking('char-1', 'account-1', 'brute');
+
+      expect(matrixRepo.updateNodeAlert).toHaveBeenCalledWith('node-db-1', 'RED');
+    });
+
+    it('flushes alert level to DB even when hack fails', async () => {
+      const { service, matrixRepo } = buildHackingEnv(false);
+
+      await service.performHacking('char-1', 'account-1', 'brute');
+
+      expect(matrixRepo.updateNodeAlert).toHaveBeenCalledWith('node-db-1', 'RED');
+    });
+
+    it('increments breachProgress on the node when hack succeeds', async () => {
+      const { service, registry, nodeEntityId } = buildHackingEnv(true);
+
+      await service.performHacking('char-1', 'account-1', 'brute');
+
+      const node = registry.getComponent<MatrixNodeComponent>(nodeEntityId, ComponentTypes.MatrixNode);
+      expect(node!.breachProgress).toBe(1);
+    });
+
+    it('does NOT increment breachProgress when hack fails', async () => {
+      const { service, registry, nodeEntityId } = buildHackingEnv(false);
+
+      await service.performHacking('char-1', 'account-1', 'brute');
+
+      const node = registry.getComponent<MatrixNodeComponent>(nodeEntityId, ComponentTypes.MatrixNode);
+      expect(node!.breachProgress).toBe(0);
+    });
+
+    it('increments overwatchScore on the decker', async () => {
+      const { service, registry, deckerEntityId } = buildHackingEnv(true);
+
+      await service.performHacking('char-1', 'account-1', 'brute');
+
+      const decker = registry.getComponent<DeckerComponent>(deckerEntityId, ComponentTypes.Decker);
+      expect(decker!.overwatchScore).toBe(1);
+    });
+  });
 });
