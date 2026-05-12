@@ -78,7 +78,8 @@ export class MissionGenerator {
     return {
       layout,
       objectives,
-      spawnData
+      spawnData,
+      nodeTargetData: [],
     };
   }
 

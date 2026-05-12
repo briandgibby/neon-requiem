@@ -193,6 +193,7 @@ export class MatrixService {
         securityLevel: nodeData.securityLevel,
         alertLevel: nodeData.alertLevel as AlertLevel,
         linkedRoomId: roomId,
+        breachProgress: 0,
       });
       
       this.ecsRegistry.addComponent<IdentityComponent>(nodeEntityId, ComponentTypes.Identity, {
@@ -263,7 +264,8 @@ export class MatrixService {
       attack,
       sleaze,
       firewall,
-      biofeedbackBuffer: buffer
+      biofeedbackBuffer: buffer,
+      overwatchScore: 0,
     });
 
     this.ecsRegistry.addComponent<CombatStatusComponent>(entityId, ComponentTypes.CombatStatus, { state: 'engaged', isPetActive: false });

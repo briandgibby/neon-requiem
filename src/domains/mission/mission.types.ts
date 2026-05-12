@@ -25,6 +25,12 @@ export interface MissionInstanceData {
     isTarget: boolean;
     objectiveIndex?: number;
   }[];
+  nodeTargetData: {
+    roomSlug: string;
+    roomId?: string;
+    objectiveIndex: number;
+    hackThreshold: number;
+  }[];
 }
 
 export interface AcceptMissionInput {

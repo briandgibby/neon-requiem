@@ -106,6 +106,7 @@ export interface MatrixNodeComponent {
   securityLevel: number;
   alertLevel: 'GREEN' | 'YELLOW' | 'RED';
   linkedRoomId: string | null;
+  breachProgress: number;
 }
 
 export interface IceComponent {
@@ -121,6 +122,7 @@ export interface DeckerComponent {
   sleaze: number;
   firewall: number;
   biofeedbackBuffer: number;
+  overwatchScore: number;
 }
 
 export interface MissionTargetComponent {
@@ -128,4 +130,5 @@ export interface MissionTargetComponent {
   objectiveIndex: number;
   goalType: 'KILL' | 'HACK' | 'COLLECT' | 'VISIT';
   isCompleted: boolean;
+  hackThreshold?: number;
 }
