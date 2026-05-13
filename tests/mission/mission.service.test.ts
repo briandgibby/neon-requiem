@@ -199,3 +199,49 @@ describe('MissionService', () => {
     });
   });
 });
+
+describe('MissionRepository.findActiveMissionsByNodeRoom', () => {
+  it('returns missions whose nodeTargetData contains the given roomId', async () => {
+    const { MissionRepository } = await import('../../src/domains/mission/mission.repository');
+
+    const missions = [
+      {
+        id: 'mission-1',
+        status: 'ACTIVE',
+        targetData: {
+          nodeTargetData: [{ roomSlug: 'server-room', roomId: 'room-uuid-1', objectiveIndex: 0, hackThreshold: 3 }],
+        },
+      },
+      {
+        id: 'mission-2',
+        status: 'ACTIVE',
+        targetData: {
+          nodeTargetData: [{ roomSlug: 'vault', roomId: 'room-uuid-2', objectiveIndex: 0, hackThreshold: 2 }],
+        },
+      },
+      {
+        id: 'mission-3',
+        status: 'ACTIVE',
+        targetData: { nodeTargetData: [] },
+      },
+    ];
+    const db = { activeMission: { findMany: jest.fn().mockResolvedValue(missions) } };
+    const repo = new MissionRepository(db as any);
+
+    const result = await repo.findActiveMissionsByNodeRoom('room-uuid-1');
+
+    expect(result).toHaveLength(1);
+    expect(result[0].id).toBe('mission-1');
+  });
+
+  it('returns empty array when no missions target the room', async () => {
+    const { MissionRepository } = await import('../../src/domains/mission/mission.repository');
+
+    const db = { activeMission: { findMany: jest.fn().mockResolvedValue([]) } };
+    const repo = new MissionRepository(db as any);
+
+    const result = await repo.findActiveMissionsByNodeRoom('room-uuid-99');
+
+    expect(result).toEqual([]);
+  });
+});
