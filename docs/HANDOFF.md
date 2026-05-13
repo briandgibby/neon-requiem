@@ -1,7 +1,7 @@
 # Neon Requiem - Project Handoff
 
-**Date:** 2026-05-09
-**Session focus:** Diagnosis pass over recent ECS lifecycle, Matrix, Mission, SocketHub, frontend Matrix changes, and Phase 4.2 setup.
+**Date:** 2026-05-13
+**Session focus:** Phase 4.2 complete. Phase 4.3 (Mission Instancing, Physical Body Persistence, Alert Escalation) designed and spec written.
 
 ---
 
@@ -14,9 +14,9 @@
   npm run build
   npm test -- --silent
   ```
-- Verified backend result after diagnosis:
+- Verified backend result (2026-05-13):
   - `npm run build`: passes.
-  - `npm test -- --silent`: passes, 20 suites / 91 tests.
+  - `npm test -- --silent`: passes, **22 suites / 112 tests** (all Phase 4.2 work included).
 - Frontend verification:
   - `cd client; npm exec -- tsc -b`: passes.
   - `cd client; npm run build`: passes under Node `v22.22.2` after reinstalling frontend dependencies with optional native packages.
@@ -131,25 +131,47 @@ The project has moved from a shallow procedural model to a **Deep Module** archi
      - `tests/mission/mission.service.test.ts`
    - Frontend cleanup: `GameView` now removes its `matrix_data` socket handler during effect cleanup.
 
-11. **Phase 4.2 Start (2026-05-09):**
-   - Matrix ICE now materializes into ECS when `MatrixService.getOrCreateEcsNode` loads a DB Matrix node.
-   - Matrix node views now expose active ICE with stable DB ids plus ECS entity ids, health, identity, and type data.
-   - `data spike <ice-id>` now accepts a DB ICE id from the node view and resolves it to the live ECS ICE entity in the decker's active node.
-   - Accepted missions now attach `MissionTargetComponent` to spawned ECS NPC targets when generated `spawnData` resolves to a known room and mob template.
-   - Added regression coverage for Matrix ICE spawning/data spike resolution and mission target attachment.
+11. **Phase 4.2 — Matrix/Mission ECS Completion (COMPLETE, 2026-05-12):**
+   - Matrix ICE materializes into ECS when `MatrixService.getOrCreateEcsNode` loads a DB Matrix node.
+   - `data spike <ice-id>` resolves DB ICE ids to live ECS entities; ICE HP flushed to DB after every spike.
+   - `performHacking` flushes alert level to DB, increments `breachProgress` on the node, and accumulates `overwatchScore` on the decker.
+   - `MatrixTickSystem` injects `MatrixRepository` and flushes alert decay to DB.
+   - `MissionGenerator` produces `nodeTargetData` for MATRIX-type missions.
+   - `MissionRepository.findActiveMissionsByNodeRoom` added for node→mission lookup.
+   - `MissionService.acceptMission` resolves node target room slugs to DB room IDs.
+   - `MatrixService` accepts an `onNodeCreated` callback; server wires it to attach `MissionTargetComponent` to newly created ECS node entities.
+   - `MissionSystem` HACK detection replaced: uses `breachProgress >= hackThreshold` instead of `alertLevel === RED`.
+   - All 9 tasks committed; 22 suites / 112 tests green.
+   - **Pending commit:** `tests/mission/mission.service.test.ts` has an uncommitted `MissionRepository.findActiveMissionsByNodeRoom` test block — commit this before starting Phase 4.3.
+
+12. **Phase 4.3 — Mission Instancing, Physical Body Persistence & Alert Escalation (NEXT):**
+   - Spec written: `docs/superpowers/specs/2026-05-13-phase-4.3-instancing-body-persistence-design.md`
+   - Implementation plan: TBD (invoke `writing-plans` to generate)
+   - Key decisions locked in:
+     - Per-party instances created at `acceptMission`; rooms exist in DB, ECS entities spawn lazily on room entry
+     - `DeckerComponent` gains `physicalRoomId` — body anchored at jack-in location, immovable while jacked in
+     - Instance matrix nodes require physical presence (`requiresPhysicalPresence: true`) — no remote hacking by player characters
+     - Alert state is a single shared value on `MissionInstance`, written by both matrix and physical systems
+     - GREEN/YELLOW/RED drive patrol frequency and elite mob spawning
+     - Safe zones are a DB flag on rooms with an event override path baked in from the start
+   - **Follow-on phases (not this slice):** mob aggro/follow system; body-guarding mechanic (tank shields decker)
 
 ---
 
-## 4. Immediate Next Steps (Phase 4.2)
+## 4. Immediate Next Steps (Phase 4.3)
 
-**Mission and Matrix ECS Completion**
-The diagnosis pass found the lifecycle foundation viable, but two gameplay loops are still only partially connected end to end.
+**Mission Instancing, Physical Body Persistence & Alert Escalation**
 
-- **Mission targets:** Accepted missions now attach generated NPC targets to live ECS entities when rooms/templates resolve. Remaining work: expand this beyond NPC assassination targets into Matrix-node objectives and other objective types.
-- **Matrix ICE:** DB-backed Matrix ICE now spawns into ECS and `data spike` accepts stable DB ICE ids. Remaining work: persist ICE HP/alert changes back to the database when ECS state changes should survive cleanup/restart.
-- **Snapshot history/admin tooling:** The transaction log is now safer, but there is still no admin-facing snapshot history view.
-- **Frontend maintenance:** Client typecheck and production build now pass under Node 22. Remaining frontend maintenance is lint debt in `client/src`.
-- **Line ending / diff hygiene:** The working tree has broad pre-existing churn across many files. Normalize review scope before a PR to avoid burying functional changes in whitespace noise.
+1. **Commit the pending test file** — `tests/mission/mission.service.test.ts` has an uncommitted `MissionRepository.findActiveMissionsByNodeRoom` block. Commit it first.
+2. **Create feature branch** — `feat/phase-4.3`
+3. **Generate implementation plan** — invoke `writing-plans` against the Phase 4.3 spec
+4. **Execute plan** — invoke `executing-plans`
+
+**Remaining carry-forward items (not blocking Phase 4.3):**
+- Snapshot history/admin tooling — no admin-facing snapshot history view yet
+- Frontend lint debt in `client/src` (explicit `any`, React hook rules, static components declared during render)
+- Mob aggro/follow system — separate phase after 4.3
+- Body-guarding mechanic — separate phase after 4.3
 
 
 ---
