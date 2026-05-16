@@ -11,13 +11,11 @@ import {
   PlayerIdComponent,
   HealthComponent,
   IceComponent,
-  StunComponent,
   ApComponent,
-  AttributesComponent,
   CombatStatusComponent,
   PositionComponent,
-  CharacterClassComponent,
 } from '../../engine/ecs/components';
+import { PlayerEntityFactory } from '../../engine/ecs/factories/player-entity-factory';
 import { MAX_AP } from '../../shared/constants';
 
 type NodeCreatedCallback = (roomId: string, nodeEntityId: string) => Promise<void>;
@@ -254,20 +252,7 @@ export class MatrixService {
     );
 
     if (!entityId) {
-       entityId = this.ecsRegistry.createEntity();
-       this.ecsRegistry.addComponent<PlayerIdComponent>(entityId, ComponentTypes.PlayerId, { characterId, accountId });
-       this.ecsRegistry.addComponent<IdentityComponent>(entityId, ComponentTypes.Identity, { name: character.name, slug: character.name.toLowerCase() });
-       this.ecsRegistry.addComponent<HealthComponent>(entityId, ComponentTypes.Health, { current: character.currentHp, max: character.maxHp, lastRegenAt: Date.now() });
-       this.ecsRegistry.addComponent<StunComponent>(entityId, ComponentTypes.Stun, { current: character.currentStun, max: character.maxStun, lastRegenAt: Date.now() });
-       this.ecsRegistry.addComponent<PositionComponent>(entityId, ComponentTypes.Position, { roomId });
-       this.ecsRegistry.addComponent<CharacterClassComponent>(entityId, ComponentTypes.CharacterClass, {
-         className: character.className,
-       });
-       this.ecsRegistry.addComponent<AttributesComponent>(entityId, ComponentTypes.Attributes, {
-         level: character.level, body: character.body, agility: character.agility, dexterity: character.dexterity,
-         strength: character.strength, logic: character.logic, intuition: character.intuition,
-         willpower: character.willpower, charisma: character.charisma, luck: character.luck,
-       });
+      entityId = PlayerEntityFactory.createFromRecord(this.ecsRegistry, character, roomId);
     }
 
     let attack = isTechnomancer ? (character.resAttack || 1) : 0;

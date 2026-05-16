@@ -67,6 +67,9 @@ A player-defined mapping from a short trigger string or UI selection to a full c
 ### Hotkey Picker
 A UI component that lets players configure hotkeys without typing. Presents available commands as dropdown menus populated from the `CommandRegistry`. Each command entry exposes a `label` (display name), `description` (tooltip), `usage` hint, and `mode` — the picker uses `mode` to filter the visible command list to only those valid in the player's current state (physical vs. matrix). Design intent: the game must be fully playable by someone who cannot type, using only the hotkey picker and mapped inputs.
 
+### Flavor Over Errors
+When a skill, spell, or action is valid in the abstract but contextually inappropriate (wrong zone, insufficient security clearance, incompatible game state), the game should respond with a flavor message rather than a bare error or silent no-op. The message should acknowledge the attempt and give an in-world reason for the outcome. Example: attempting to cast a destructive spell in a safe zone yields "Just as you start to cast <spell>, the heavy security presence makes you think better of it" — not "You cannot do that here." This applies to safe-zone restrictions, alarm-state gates, class-capability mismatches, and any other contextual block. **Consequence for architecture:** `SkillsComponent` is always present on player entities regardless of context — restriction enforcement and flavor messaging belong in the handler or service layer, not in the ECS component layer.
+
 ---
 
 ## Mission Concepts
