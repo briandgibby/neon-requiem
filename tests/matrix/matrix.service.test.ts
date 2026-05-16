@@ -198,6 +198,7 @@ describe('MatrixService', () => {
     });
     registry.addComponent<DeckerComponent>(entityId, ComponentTypes.Decker, {
       activeNodeEntityId: nodeId,
+      physicalRoomId: '',
       attack: 5,
       sleaze: 5,
       firewall: 5,
@@ -263,6 +264,7 @@ describe('MatrixService', () => {
       });
       registry.addComponent<DeckerComponent>(deckerEntityId, ComponentTypes.Decker, {
         activeNodeEntityId: nodeEntityId,
+        physicalRoomId: '',
         attack: 6, sleaze: 5, firewall: 4, biofeedbackBuffer: 3, overwatchScore: 0,
       });
       registry.addComponent<AttributesComponent>(deckerEntityId, ComponentTypes.Attributes, {
@@ -399,6 +401,7 @@ describe('MatrixService', () => {
       });
       registry.addComponent<DeckerComponent>(deckerEntityId, ComponentTypes.Decker, {
         activeNodeEntityId: nodeEntityId,
+        physicalRoomId: '',
         attack: 8, sleaze: 5, firewall: 4, biofeedbackBuffer: 3, overwatchScore: 0,
       });
 

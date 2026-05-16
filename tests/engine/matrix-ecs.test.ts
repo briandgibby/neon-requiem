@@ -79,6 +79,7 @@ describe('Matrix ECS', () => {
       deckerId = registry.createEntity();
       registry.addComponent<DeckerComponent>(deckerId, ComponentTypes.Decker, {
         activeNodeEntityId: nodeId,
+        physicalRoomId: '',
         attack: 5, sleaze: 5, firewall: 5, biofeedbackBuffer: 5, overwatchScore: 0,
       });
       registry.addComponent<AttributesComponent>(deckerId, ComponentTypes.Attributes, {
@@ -156,7 +157,7 @@ describe('Matrix ECS', () => {
 
       const deckerId = registry.createEntity();
       registry.addComponent<DeckerComponent>(deckerId, ComponentTypes.Decker, {
-        activeNodeEntityId: nodeId, attack: 1, sleaze: 1, firewall: 1, biofeedbackBuffer: 1, overwatchScore: 0,
+        activeNodeEntityId: nodeId, physicalRoomId: '', attack: 1, sleaze: 1, firewall: 1, biofeedbackBuffer: 1, overwatchScore: 0,
       });
       registry.addComponent<AttributesComponent>(deckerId, ComponentTypes.Attributes, {
         level: 1, body: 1, agility: 1, dexterity: 1, strength: 1, logic: 1, intuition: 1, willpower: 1, charisma: 1, luck: 1

@@ -272,6 +272,7 @@ export class MatrixService {
 
     this.ecsRegistry.addComponent<DeckerComponent>(entityId, ComponentTypes.Decker, {
       activeNodeEntityId: nodeEntityId,
+      physicalRoomId: '',
       attack,
       sleaze,
       firewall,

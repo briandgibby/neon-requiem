@@ -118,6 +118,7 @@ export interface IceComponent {
 
 export interface DeckerComponent {
   activeNodeEntityId: string;
+  physicalRoomId: string;       // room where the body is anchored during a matrix dive
   attack: number;
   sleaze: number;
   firewall: number;

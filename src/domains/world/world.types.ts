@@ -17,6 +17,9 @@ export interface RoomRecord {
   poiCategory: string | null;
   gridX: number | null;
   gridY: number | null;
+  isSafeZone: boolean;
+  safeZoneOverrideActive: boolean;
+  missionInstanceId: string | null;
 }
 
 export interface ZoneRecord {
