@@ -72,7 +72,10 @@ export class InstanceRepository {
 
   async findResolvedInstances() {
     return this.db.missionInstance.findMany({
-      where: { status: { in: ['COMPLETED', 'ABANDONED'] } },
+      where: {
+        status: { in: ['COMPLETED', 'ABANDONED'] },
+        rooms: { some: {} },  // Only instances that still have rooms to clean up
+      },
       include: { rooms: { select: { id: true } } },
     });
   }
