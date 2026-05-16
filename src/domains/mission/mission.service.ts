@@ -124,42 +124,53 @@ export class MissionService {
         partyLeaderId: input.characterId,
       });
 
-      const instanceRooms = await this.instanceRepo.createInstanceRooms(instance.id, targetData.layout ?? []);
+      try {
+        const instanceRooms = await this.instanceRepo.createInstanceRooms(instance.id, targetData.layout ?? []);
 
-      // Map layout slugs → instance rooms by position
-      const slugToRoom = new Map(
-        (targetData.layout ?? []).map((slug: string, i: number) => [slug, instanceRooms[i]])
-      );
+        if (instanceRooms.length !== (targetData.layout ?? []).length) {
+          throw new Error(`Instance room creation incomplete: expected ${(targetData.layout ?? []).length}, got ${instanceRooms.length}`);
+        }
 
-      // Resolve spawnData roomSlugs → instance room IDs
-      for (const spawn of (targetData.spawnData ?? [])) {
-        const instanceRoom = slugToRoom.get(spawn.roomSlug);
-        if (instanceRoom) spawn.roomId = instanceRoom.id;
-      }
+        // Map layout slugs → instance rooms by position
+        const slugToRoom = new Map(
+          (targetData.layout ?? []).map((slug: string, i: number) => [slug, instanceRooms[i]])
+        );
 
-      // Resolve nodeTargetData roomSlugs → instance room IDs
-      for (const nodeTarget of (targetData.nodeTargetData ?? [])) {
-        const instanceRoom = slugToRoom.get(nodeTarget.roomSlug);
-        if (instanceRoom) nodeTarget.roomId = instanceRoom.id;
-      }
+        // Resolve spawnData roomSlugs → instance room IDs
+        for (const spawn of (targetData.spawnData ?? [])) {
+          const instanceRoom = slugToRoom.get(spawn.roomSlug);
+          if (instanceRoom) spawn.roomId = instanceRoom.id;
+        }
 
-      // 3. For MATRIX missions, create an instance-scoped MatrixNode
-      if (template.type === 'MATRIX' && this.matrixRepo) {
+        // Resolve nodeTargetData roomSlugs → instance room IDs
         for (const nodeTarget of (targetData.nodeTargetData ?? [])) {
-          if (nodeTarget.roomId) {
-            await this.matrixRepo.createMatrixNode({
-              slug: `inst-node-${instance.id.slice(0, 8)}-${nodeTarget.roomId.slice(0, 8)}`,
-              name: `${template.name} — Corporate Host`,
-              roomId: nodeTarget.roomId,
-              securityLevel: template.baseDifficulty + 1,
-              requiresPhysicalPresence: true,
-            });
+          const instanceRoom = slugToRoom.get(nodeTarget.roomSlug);
+          if (instanceRoom) nodeTarget.roomId = instanceRoom.id;
+        }
+
+        // 3. For MATRIX missions, create an instance-scoped MatrixNode
+        if (template.type === 'MATRIX' && this.matrixRepo) {
+          const seenRoomIds = new Set<string>();
+          for (const nodeTarget of (targetData.nodeTargetData ?? [])) {
+            if (nodeTarget.roomId && !seenRoomIds.has(nodeTarget.roomId)) {
+              seenRoomIds.add(nodeTarget.roomId);
+              await this.matrixRepo.createMatrixNode({
+                slug: `inst-node-${instance.id.slice(0, 8)}-${nodeTarget.roomId.slice(0, 8)}`,
+                name: `${template.name} — Corporate Host`,
+                roomId: nodeTarget.roomId,
+                securityLevel: template.baseDifficulty + 1,
+                requiresPhysicalPresence: true,
+              });
+            }
           }
         }
-      }
 
-      // Persist updated targetData (now has roomIds)
-      await this.missionRepo.updateActiveMission(activeMission.id, { targetData });
+        // Persist updated targetData (now has roomIds)
+        await this.missionRepo.updateActiveMission(activeMission.id, { targetData });
+      } catch (err) {
+        await this.instanceRepo.deleteInstance(instance.id).catch(() => undefined);
+        throw err;
+      }
     }
 
     await this.attachMissionTargets(activeMission.id, targetData);
