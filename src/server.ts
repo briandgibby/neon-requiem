@@ -67,7 +67,6 @@ import { ShopService } from './domains/shop/shop.service';
 import { registerShopRoutes } from './domains/shop/shop.routes';
 import { AuditLogger } from './engine/audit-logger';
 import type { Socket } from 'socket.io';
-import { ComponentTypes, MissionTargetComponent } from './engine/ecs/components';
 import type { AuthPayload } from './shared/types';
 import type { JwtSigner } from './domains/auth/auth.types';
 
@@ -139,27 +138,12 @@ async function bootstrap() {
   const matrixRepo = new MatrixRepository(db);
   const missionRepo = new MissionRepository(db);
   const instanceRepo = new InstanceRepository(db);
+  let missionService!: MissionService;
   const matrixService = new MatrixService(
     matrixRepo,
     ecsRegistry,
     moveDispatcher,
-    async (roomId: string, nodeEntityId: string) => {
-      const missions = await missionRepo.findActiveMissionsByNodeRoom(roomId);
-      for (const mission of missions) {
-        const targetData = mission.targetData as any;
-        for (const nodeTarget of (targetData.nodeTargetData ?? [])) {
-          if (nodeTarget.roomId === roomId) {
-            ecsRegistry.addComponent<MissionTargetComponent>(nodeEntityId, ComponentTypes.MissionTarget, {
-              missionId: mission.id,
-              objectiveIndex: nodeTarget.objectiveIndex,
-              goalType: 'HACK',
-              hackThreshold: nodeTarget.hackThreshold,
-              isCompleted: false,
-            });
-          }
-        }
-      }
-    }
+    async (roomId, nodeEntityId) => missionService.wireNodeToMissionTargets(roomId, nodeEntityId),
   );
   registerMatrixRoutes(app, matrixService, authService);
 
@@ -183,8 +167,8 @@ async function bootstrap() {
 
   const auditLogger = new AuditLogger(db);
   const missionGen = new MissionGenerator();
-  const missionService = new MissionService(
-    auditLogger, missionRepo, charRepo, worldRepo, missionGen, ecsRegistry, mobRepo, instanceRepo, matrixRepo
+  missionService = new MissionService(
+    auditLogger, missionRepo, charRepo, worldRepo, missionGen, ecsRegistry, mobRepo, instanceRepo, matrixService
   );
   registerMissionRoutes(app, missionService, authService);
 

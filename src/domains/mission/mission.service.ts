@@ -11,7 +11,7 @@ import { ComponentTypes, MissionTargetComponent } from '../../engine/ecs/compone
 import { MobRepository, MobTemplateRecord } from '../combat/mob.repository';
 import { MobFactory } from '../../engine/ecs/factories/mob-factory';
 import { InstanceRepository } from './instance.repository';
-import { MatrixRepository } from '../matrix/matrix.repository';
+import { MatrixService } from '../matrix/matrix.service';
 
 export class MissionService {
   constructor(
@@ -23,7 +23,7 @@ export class MissionService {
     private readonly ecsRegistry: EcsRegistry,
     private readonly mobRepo?: MobRepository,
     private readonly instanceRepo?: InstanceRepository,
-    private readonly matrixRepo?: MatrixRepository,
+    private readonly matrixService?: MatrixService,
   ) {}
 
   private getGoalType(objective: MissionObjective): MissionTargetComponent['goalType'] {
@@ -149,12 +149,12 @@ export class MissionService {
         }
 
         // 3. For MATRIX missions, create an instance-scoped MatrixNode
-        if (template.type === 'MATRIX' && this.matrixRepo) {
+        if (template.type === 'MATRIX' && this.matrixService) {
           const seenRoomIds = new Set<string>();
           for (const nodeTarget of (targetData.nodeTargetData ?? [])) {
             if (nodeTarget.roomId && !seenRoomIds.has(nodeTarget.roomId)) {
               seenRoomIds.add(nodeTarget.roomId);
-              await this.matrixRepo.createMatrixNode({
+              await this.matrixService.createInstanceNode({
                 slug: `inst-node-${instance.id.slice(0, 8)}-${nodeTarget.roomId.slice(0, 8)}`,
                 name: `${template.name} — Corporate Host`,
                 roomId: nodeTarget.roomId,
@@ -181,6 +181,24 @@ export class MissionService {
       missionId: activeMission.id,
       seed: activeMission.seed
     };
+  }
+
+  async wireNodeToMissionTargets(roomId: string, nodeEntityId: string): Promise<void> {
+    const missions = await this.missionRepo.findActiveMissionsByNodeRoom(roomId);
+    for (const mission of missions) {
+      const targetData = mission.targetData as any;
+      for (const nodeTarget of (targetData.nodeTargetData ?? [])) {
+        if (nodeTarget.roomId === roomId) {
+          this.ecsRegistry.addComponent<MissionTargetComponent>(nodeEntityId, ComponentTypes.MissionTarget, {
+            missionId: mission.id,
+            objectiveIndex: nodeTarget.objectiveIndex,
+            goalType: 'HACK',
+            hackThreshold: nodeTarget.hackThreshold,
+            isCompleted: false,
+          });
+        }
+      }
+    }
   }
 
   async completeMission(characterId: string, accountId: string, missionId: string, successRating: number) {

@@ -32,7 +32,7 @@
   - `PlayerSyncCoordinator`: Transactional ECS-to-DB player snapshot persistence for disconnects and periodic syncs.
 - Verified backend result (2026-05-16):
   - `npm run build`: passes.
-  - `npm test -- --silent`: passes, **24 suites / 133 tests** (all Phase 4.3 + CommandRegistry refactor included).
+  - `npm test -- --silent`: passes, **25 suites / 142 tests** (all Phase 4.3 + architecture refactors included).
 - Git branch at session end: `feat/phase-4.3` (16 commits ahead of main; not yet merged).
 
 ---
@@ -148,20 +148,30 @@ The project has moved from a shallow procedural model to a **Deep Module** archi
    - All 9 tasks committed; 22 suites / 112 tests green.
    - **Pending commit:** `tests/mission/mission.service.test.ts` has an uncommitted `MissionRepository.findActiveMissionsByNodeRoom` test block — commit this before starting Phase 4.3.
 
-13. **CommandRegistry Architecture Refactor (2026-05-16):**
-   - Branch: `feat/phase-4.3`
+13. **Architecture Deepening Pass (2026-05-16):** Three candidates implemented from `/improve-codebase-architecture` session.
+
+   **Candidate 1 — CommandRegistry seam:**
    - Replaced the monolithic `CommandDispatcher` if/else chain with a `CommandRegistry` + `CommandHandler` seam.
    - `CommandDispatcher` is now a thin 5-step router: parse → look up → resolve client → mode guard → execute (110 lines, down from 235).
    - Each command is its own class in `src/engine/commands/` with constructor-injected deps, `aliases`, `mode`, `label`, `description`, and `usage` metadata.
-   - **Four execution modes enforced by the dispatcher:** `physical` (blocked if jacked in), `matrix` (blocked if not jacked in), `wireless` (blocked if jacked in or wrong class), `any` (unrestricted).
-   - `CharacterClassComponent` added to ECS and cached at entity creation in both `CombatService.joinCombat` and `MatrixService.jackIn` — zero DB overhead at dispatch time.
-   - Wireless class whitelist: `decker`, `technomancer`, `rigger`.
-   - Multi-word normalization (`"jack in"` → `'jackin'`) handled by a static map in `parseCommand`; registry stays a plain `Map`.
-   - `CommandRegistry.getAll()` exposes handler metadata for the hotkey picker UI (accessibility path: players can configure all commands via dropdowns, no typing required).
-   - Social handlers (`SayHandler`, `TellHandler`) inject `SocketHub` directly; all other handlers are socket-agnostic.
-   - `HelpHandler` renders dynamically from the registry; new commands appear in `help` output automatically.
-   - `CONTEXT.md` created at `docs/CONTEXT.md` with canonical domain vocabulary: Rigger, Vehicle, Compulsory Follow, Wireless Mode, Hotkey, Hotkey Picker, and Mission concepts.
-   - Tests updated; 24 suites / 133 tests green.
+   - **Four execution modes enforced by the dispatcher:** `physical`, `matrix`, `wireless`, `any`.
+   - Wireless class whitelist (`decker`, `technomancer`, `rigger`) checked via `CharacterClassComponent` — zero DB overhead.
+   - `CommandRegistry.getAll()` enables the hotkey picker UI (accessibility: full play without typing).
+   - `HelpHandler` renders dynamically from the registry.
+
+   **Candidate 2 — PlayerEntityFactory:**
+   - Extracted `PlayerEntityFactory.createFromRecord()` to eliminate duplicated 10-component ECS entity construction in `CombatService.joinCombat` and `MatrixService.jackIn`.
+   - Factory owns canonical 9 base components; callers add context-specific components (Ap, CombatStatus, Decker) post-factory.
+   - `CharacterClassComponent` now always present on player entities per Flavor Over Errors design decision.
+   - `docs/CONTEXT.md` created with canonical domain vocabulary.
+
+   **Candidate 3 — MissionService cross-domain boundary:**
+   - `MissionService` previously called `matrixRepo.createMatrixNode()` directly (cross-domain DB call).
+   - Fixed: `MatrixService.createInstanceNode()` wraps the repo call; `MissionService` now depends on `MatrixService` (same domain tier).
+   - Inline 12-line `onNodeCreated` callback in `server.ts` moved into `MissionService.wireNodeToMissionTargets(roomId, nodeEntityId)`.
+   - `server.ts` callback reduced to a one-liner; `ComponentTypes`/`MissionTargetComponent` imports removed from `server.ts`.
+   - 2 new tests for `wireNodeToMissionTargets`.
+   - 25 suites / 142 tests green.
 
 12. **Phase 4.3 — Mission Instancing, Physical Body Persistence & Alert Escalation (COMPLETE, 2026-05-16):**
    - Branch: `feat/phase-4.3` (15 commits; not yet merged to main)
@@ -188,8 +198,6 @@ The project has moved from a shallow procedural model to a **Deep Module** archi
 
 1. **Merge `feat/phase-4.3` to main** — all tests green, build clean; ready to merge.
 2. **Remaining architecture candidates from `/improve-codebase-architecture` session:**
-   - **Candidate 2:** Extract `PlayerEntityBuilder` to eliminate duplicated ECS entity construction between `CombatService.joinCombat` and `MatrixService.jackIn`.
-   - **Candidate 3:** Fix `MissionService` → `matrixRepo` cross-domain call; move the inline `onNodeCreated` callback from `server.ts` into a named `MissionService` method.
    - **Candidate 4:** Evaluate folding `PresenceService` EventEmitter wrapper into `RoomPresence` directly.
 3. **Elite mob spawn logic** — `MobTemplate.eliteOnly`/`corporationId` fields exist; spawn-at-RED trigger in `InstanceCleanupSystem` or a new `EliteSpawnSystem` is the next concrete task.
 4. **Safe-zone mob AI enforcement** — `Room.isSafeZone` / `safeZoneOverrideActive` fields exist; mob AI should read `effectiveSafeZone = isSafeZone && !safeZoneOverrideActive` before targeting.

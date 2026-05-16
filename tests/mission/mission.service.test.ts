@@ -257,8 +257,8 @@ describe('acceptMission — instance creation', () => {
         { id: 'iroom-matrix', slug: 'ir-inst-1-server-room-0' },
       ]),
     };
-    const matrixRepo = {
-      createMatrixNode: jest.fn().mockResolvedValue({ id: 'mnode-1' }),
+    const matrixService = {
+      createInstanceNode: jest.fn().mockResolvedValue(undefined),
     };
     const missionRepo = {
       findTemplateBySlug: jest.fn().mockResolvedValue({
@@ -287,15 +287,77 @@ describe('acceptMission — instance creation', () => {
       new EcsRegistry(),
       undefined,
       instanceRepo as any,
-      matrixRepo as any,
+      matrixService as any,
     );
 
     await service.acceptMission({ templateSlug: 'corp-breach', characterId: 'char-1', accountId: 'acc-1' });
 
-    expect(matrixRepo.createMatrixNode).toHaveBeenCalledWith(expect.objectContaining({
+    expect(matrixService.createInstanceNode).toHaveBeenCalledWith(expect.objectContaining({
       roomId: 'iroom-matrix',
       requiresPhysicalPresence: true,
     }));
+  });
+});
+
+describe('MissionService.wireNodeToMissionTargets', () => {
+  it('attaches MissionTargetComponent to a node entity for each matching mission', async () => {
+    const ecsRegistry = new EcsRegistry();
+    const nodeEntityId = ecsRegistry.createEntity();
+
+    const missionRepo = {
+      findActiveMissionsByNodeRoom: jest.fn().mockResolvedValue([
+        {
+          id: 'mission-1',
+          targetData: {
+            nodeTargetData: [
+              { roomId: 'room-42', objectiveIndex: 0, hackThreshold: 3 },
+            ],
+          },
+        },
+      ]),
+    };
+
+    const service = new MissionService(
+      { log: jest.fn() } as any,
+      missionRepo as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      ecsRegistry,
+    );
+
+    await service.wireNodeToMissionTargets('room-42', nodeEntityId);
+
+    const target = ecsRegistry.getComponent<MissionTargetComponent>(nodeEntityId, ComponentTypes.MissionTarget);
+    expect(target).toMatchObject({
+      missionId: 'mission-1',
+      objectiveIndex: 0,
+      goalType: 'HACK',
+      hackThreshold: 3,
+      isCompleted: false,
+    });
+  });
+
+  it('does nothing when no missions target the room', async () => {
+    const ecsRegistry = new EcsRegistry();
+    const nodeEntityId = ecsRegistry.createEntity();
+
+    const missionRepo = {
+      findActiveMissionsByNodeRoom: jest.fn().mockResolvedValue([]),
+    };
+
+    const service = new MissionService(
+      { log: jest.fn() } as any,
+      missionRepo as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      ecsRegistry,
+    );
+
+    await service.wireNodeToMissionTargets('room-99', nodeEntityId);
+
+    expect(ecsRegistry.getComponent(nodeEntityId, ComponentTypes.MissionTarget)).toBeUndefined();
   });
 });
 

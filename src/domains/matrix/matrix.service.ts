@@ -47,6 +47,16 @@ export class MatrixService {
     private readonly onNodeCreated?: NodeCreatedCallback,
   ) {}
 
+  async createInstanceNode(params: {
+    slug: string;
+    name: string;
+    roomId: string;
+    securityLevel: number;
+    requiresPhysicalPresence: boolean;
+  }): Promise<void> {
+    await this.matrixRepo.createMatrixNode(params);
+  }
+
   private getEcsNodeView(nodeEntityId: string): MatrixNodeView | null {
     const node = this.ecsRegistry.getComponent<MatrixNodeComponent>(nodeEntityId, ComponentTypes.MatrixNode);
     if (!node) return null;
