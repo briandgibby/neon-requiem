@@ -1,7 +1,7 @@
 # Neon Requiem - Project Handoff
 
-**Date:** 2026-05-13
-**Session focus:** Phase 4.2 complete. Phase 4.3 (Mission Instancing, Physical Body Persistence, Alert Escalation) designed and spec written.
+**Date:** 2026-05-16
+**Session focus:** Phase 4.3 complete. Mission Instancing, Physical Body Persistence, and Alert Escalation all implemented and tested.
 
 ---
 
@@ -30,6 +30,10 @@
   - `Heartbeat`: A subscriber-based timing system replacing the procedural game loop.
   - `PresenceService`: A character-centric presence and movement orchestrator.
   - `PlayerSyncCoordinator`: Transactional ECS-to-DB player snapshot persistence for disconnects and periodic syncs.
+- Verified backend result (2026-05-16):
+  - `npm run build`: passes.
+  - `npm test -- --silent`: passes, **24 suites / 132 tests** (all Phase 4.3 work included).
+- Git branch at session end: `feat/phase-4.3` (15 commits ahead of main; not yet merged).
 
 ---
 
@@ -131,7 +135,7 @@ The project has moved from a shallow procedural model to a **Deep Module** archi
      - `tests/mission/mission.service.test.ts`
    - Frontend cleanup: `GameView` now removes its `matrix_data` socket handler during effect cleanup.
 
-11. **Phase 4.2 — Matrix/Mission ECS Completion (COMPLETE, 2026-05-12):**
+11. **Phase 4.2 — Matrix/Mission ECS Completion (COMPLETE, 2026-05-12, merged to main):**
    - Matrix ICE materializes into ECS when `MatrixService.getOrCreateEcsNode` loads a DB Matrix node.
    - `data spike <ice-id>` resolves DB ICE ids to live ECS entities; ICE HP flushed to DB after every spike.
    - `performHacking` flushes alert level to DB, increments `breachProgress` on the node, and accumulates `overwatchScore` on the decker.
@@ -144,34 +148,39 @@ The project has moved from a shallow procedural model to a **Deep Module** archi
    - All 9 tasks committed; 22 suites / 112 tests green.
    - **Pending commit:** `tests/mission/mission.service.test.ts` has an uncommitted `MissionRepository.findActiveMissionsByNodeRoom` test block — commit this before starting Phase 4.3.
 
-12. **Phase 4.3 — Mission Instancing, Physical Body Persistence & Alert Escalation (NEXT):**
-   - Spec written: `docs/superpowers/specs/2026-05-13-phase-4.3-instancing-body-persistence-design.md`
-   - Implementation plan: TBD (invoke `writing-plans` to generate)
-   - Key decisions locked in:
-     - Per-party instances created at `acceptMission`; rooms exist in DB, ECS entities spawn lazily on room entry
-     - `DeckerComponent` gains `physicalRoomId` — body anchored at jack-in location, immovable while jacked in
-     - Instance matrix nodes require physical presence (`requiresPhysicalPresence: true`) — no remote hacking by player characters
-     - Alert state is a single shared value on `MissionInstance`, written by both matrix and physical systems
-     - GREEN/YELLOW/RED drive patrol frequency and elite mob spawning
-     - Safe zones are a DB flag on rooms with an event override path baked in from the start
-   - **Follow-on phases (not this slice):** mob aggro/follow system; body-guarding mechanic (tank shields decker)
+12. **Phase 4.3 — Mission Instancing, Physical Body Persistence & Alert Escalation (COMPLETE, 2026-05-16):**
+   - Branch: `feat/phase-4.3` (15 commits; not yet merged to main)
+   - Spec: `docs/superpowers/specs/2026-05-13-phase-4.3-instancing-body-persistence-design.md`
+   - Plan: `docs/superpowers/plans/2026-05-13-phase-4.3-implementation.md`
+   - All 12 tasks delivered; 24 suites / 132 tests green.
+   - **What shipped:**
+     - `MissionInstance` DB model; `InstanceRepository` with one-way alert escalation and `rooms: { some: {} }` cleanup guard
+     - `DeckerComponent.physicalRoomId` set at `jackIn`, restored at `jackOut`
+     - `requiresPhysicalPresence: true` on instance `MatrixNode`; `jackIn` enforces physical co-location
+     - Movement blocked in `CommandDispatcher` when entity has `DeckerComponent`
+     - `CommandDispatcher` activates PENDING instances on first room entry
+     - `MatrixTickSystem` syncs alert decay to `MissionInstance`
+     - `InstanceCleanupSystem` (frequency 60) evicts ECS entities and soft-deletes DB records for resolved instances
+     - `eliteOnly`/`corporationId` fields on `MobTemplate` (spawn logic wired as follow-on)
+     - Safe-zone fields (`isSafeZone`, `safeZoneOverrideActive`) on `Room`
+   - **Follow-on phases (not this slice):** mob aggro/follow system; body-guarding mechanic; elite mob spawn logic at RED alert; safe-zone enforcement in mob AI
 
 ---
 
-## 4. Immediate Next Steps (Phase 4.3)
+## 4. Immediate Next Steps (Phase 4.4+)
 
-**Mission Instancing, Physical Body Persistence & Alert Escalation**
+**Merge and continue**
 
-1. **Commit the pending test file** — `tests/mission/mission.service.test.ts` has an uncommitted `MissionRepository.findActiveMissionsByNodeRoom` block. Commit it first.
-2. **Create feature branch** — `feat/phase-4.3`
-3. **Generate implementation plan** — invoke `writing-plans` against the Phase 4.3 spec
-4. **Execute plan** — invoke `executing-plans`
+1. **Merge `feat/phase-4.3` to main** — all tests green, build clean; ready to merge.
+2. **Elite mob spawn logic** — `MobTemplate.eliteOnly`/`corporationId` fields exist; spawn-at-RED trigger in `InstanceCleanupSystem` or a new `EliteSpawnSystem` is the next concrete task.
+3. **Safe-zone mob AI enforcement** — `Room.isSafeZone` / `safeZoneOverrideActive` fields exist; mob AI should read `effectiveSafeZone = isSafeZone && !safeZoneOverrideActive` before targeting.
+4. **Mob aggro/follow system** — room-to-room chase; safe-zone boundary enforcement; separate phase.
+5. **Body-guarding mechanic** — tank actively shields a jacked-in decker's physical body; separate phase.
 
-**Remaining carry-forward items (not blocking Phase 4.3):**
+**Remaining carry-forward items:**
 - Snapshot history/admin tooling — no admin-facing snapshot history view yet
 - Frontend lint debt in `client/src` (explicit `any`, React hook rules, static components declared during render)
-- Mob aggro/follow system — separate phase after 4.3
-- Body-guarding mechanic — separate phase after 4.3
+- `WorldEventService` — `safeZoneOverrideActive` flag is wired at the DB level; a service to flip it during events is not yet implemented
 
 
 ---
