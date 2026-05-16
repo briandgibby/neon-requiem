@@ -1,4 +1,6 @@
 import { CommandDispatcher, CommandOutput } from '../../src/engine/command-dispatcher';
+import { EcsRegistry } from '../../src/engine/ecs/registry';
+import { ComponentTypes, DeckerComponent, PlayerIdComponent } from '../../src/engine/ecs/components';
 
 describe('CommandDispatcher', () => {
   let dispatcher: CommandDispatcher;
@@ -119,5 +121,73 @@ describe('CommandDispatcher', () => {
     expect(mockOutput.emit).toHaveBeenCalledWith('message', expect.objectContaining({
       text: 'Unknown command: invalidcommand',
     }));
+  });
+});
+
+describe('CommandDispatcher — body anchoring', () => {
+  function buildEnv() {
+    const registry = new EcsRegistry();
+    const worldService = {
+      moveCharacter: jest.fn(),
+      navigate: jest.fn(),
+      getRoom: jest.fn(),
+      getPOIs: jest.fn().mockResolvedValue([]),
+    };
+    const socketHub = {
+      getSelectedClient: jest.fn().mockReturnValue({
+        characterId: 'char-1', accountId: 'acc-1', roomId: 'room-1', characterName: 'Fox',
+      }),
+      getRoomOccupants: jest.fn().mockReturnValue([]),
+      emitToRoom: jest.fn(),
+      findSocketForCharacter: jest.fn(),
+      sendToSocket: jest.fn(),
+    };
+    const matrixService = { getActiveNode: jest.fn().mockResolvedValue(null) };
+    const output = {
+      emit: jest.fn(),
+      data: { characterId: 'char-1', accountId: 'acc-1' },
+    };
+
+    const dispatcher = new CommandDispatcher(
+      worldService as any, socketHub as any, matrixService as any, registry
+    );
+    return { dispatcher, registry, worldService, output };
+  }
+
+  it('returns an error and does NOT move when the character is jacked in', async () => {
+    const { dispatcher, registry, worldService, output } = buildEnv();
+
+    const entityId = registry.createEntity();
+    registry.addComponent<PlayerIdComponent>(entityId, ComponentTypes.PlayerId, {
+      characterId: 'char-1', accountId: 'acc-1',
+    });
+    registry.addComponent<DeckerComponent>(entityId, ComponentTypes.Decker, {
+      activeNodeEntityId: 'node-1',
+      physicalRoomId: 'room-1',
+      attack: 5, sleaze: 4, firewall: 3, biofeedbackBuffer: 2, overwatchScore: 0,
+    });
+
+    await dispatcher.dispatch(output as any, 'north');
+
+    expect(worldService.moveCharacter).not.toHaveBeenCalled();
+    expect(output.emit).toHaveBeenCalledWith('message', expect.objectContaining({
+      text: expect.stringContaining('unresponsive'),
+    }));
+  });
+
+  it('allows movement when the character is NOT jacked in', async () => {
+    const { dispatcher, registry, worldService, output } = buildEnv();
+
+    worldService.moveCharacter.mockResolvedValue({ success: false, error: 'No exit' });
+
+    const entityId = registry.createEntity();
+    registry.addComponent<PlayerIdComponent>(entityId, ComponentTypes.PlayerId, {
+      characterId: 'char-1', accountId: 'acc-1',
+    });
+    // No DeckerComponent — not jacked in
+
+    await dispatcher.dispatch(output as any, 'north');
+
+    expect(worldService.moveCharacter).toHaveBeenCalled();
   });
 });

@@ -2,6 +2,8 @@ import { WorldService } from '../domains/world/world.service';
 import { SocketHub } from './socket-hub';
 import { MatrixService } from '../domains/matrix/matrix.service';
 import { Direction } from '../shared/types';
+import { EcsRegistry } from './ecs/registry';
+import { ComponentTypes, DeckerComponent, PlayerIdComponent } from './ecs/components';
 
 export interface CommandOutput {
   emit(event: string, data: any): void;
@@ -16,7 +18,18 @@ export class CommandDispatcher {
     private readonly worldService: WorldService,
     private readonly socketHub: SocketHub,
     private readonly matrixService: MatrixService,
+    private readonly ecsRegistry?: EcsRegistry,
   ) {}
+
+  private isJackedIn(characterId: string): boolean {
+    if (!this.ecsRegistry) return false;
+    const entityId = this.ecsRegistry.getEntityByComponent<PlayerIdComponent>(
+      ComponentTypes.PlayerId,
+      (p) => p.characterId === characterId
+    );
+    if (!entityId) return false;
+    return !!this.ecsRegistry.getComponent<DeckerComponent>(entityId, ComponentTypes.Decker);
+  }
 
   async dispatch(output: CommandOutput, commandText: string): Promise<void> {
     const characterId = output.data.characterId;
@@ -116,6 +129,10 @@ export class CommandDispatcher {
           scope: 'tell',
         });
       } else if (['n', 's', 'e', 'w', 'u', 'd', 'north', 'south', 'east', 'west', 'up', 'down'].includes(action)) {
+        if (this.isJackedIn(characterId)) {
+          message('Your body is unresponsive — you are deep in the matrix.', 'error');
+          return;
+        }
         const directionMap: Record<string, Direction> = { n: 'north', s: 'south', e: 'east', w: 'west', u: 'up', d: 'down' };
         const direction = directionMap[action] || (action as Direction);
 
@@ -130,6 +147,10 @@ export class CommandDispatcher {
           message(result.error || 'You cannot go that way.', 'error');
         }
       } else if (action === 'navigate') {
+        if (this.isJackedIn(characterId)) {
+          message('Your body is unresponsive — you are deep in the matrix.', 'error');
+          return;
+        }
         const targetSlug = args[0];
         if (!targetSlug) {
           message('Usage: navigate <poi>');
