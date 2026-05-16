@@ -191,3 +191,75 @@ describe('CommandDispatcher — body anchoring', () => {
     expect(worldService.moveCharacter).toHaveBeenCalled();
   });
 });
+
+describe('CommandDispatcher — instance activation', () => {
+  it('activates a PENDING instance when a character enters an instance room', async () => {
+    const registry = new EcsRegistry();
+    const worldService = {
+      moveCharacter: jest.fn().mockResolvedValue({
+        success: true,
+        room: { id: 'iroom-1', zoneId: 'zone-1', missionInstanceId: 'inst-1', slug: 'ir-room' },
+      }),
+      getPOIs: jest.fn().mockResolvedValue([]),
+      getRoom: jest.fn(),
+      navigate: jest.fn(),
+    };
+    const socketHub = {
+      getSelectedClient: jest.fn().mockReturnValue({
+        characterId: 'char-1', accountId: 'acc-1', roomId: 'room-0', characterName: 'Fox',
+      }),
+      getRoomOccupants: jest.fn().mockReturnValue([]),
+      emitToRoom: jest.fn(),
+      findSocketForCharacter: jest.fn(),
+      sendToSocket: jest.fn(),
+    };
+    const matrixService = { getActiveNode: jest.fn().mockResolvedValue(null) };
+    const instanceRepo = {
+      findInstanceByRoomId: jest.fn().mockResolvedValue({ id: 'inst-1', status: 'PENDING' }),
+      updateInstanceStatus: jest.fn().mockResolvedValue(undefined),
+    };
+    const output = { emit: jest.fn(), data: { characterId: 'char-1', accountId: 'acc-1' } };
+
+    const dispatcher = new CommandDispatcher(
+      worldService as any, socketHub as any, matrixService as any, registry, instanceRepo as any
+    );
+
+    await dispatcher.dispatch(output as any, 'north');
+
+    expect(instanceRepo.updateInstanceStatus).toHaveBeenCalledWith('inst-1', 'ACTIVE');
+  });
+
+  it('does NOT activate when the room has no missionInstanceId', async () => {
+    const registry = new EcsRegistry();
+    const worldService = {
+      moveCharacter: jest.fn().mockResolvedValue({
+        success: true,
+        room: { id: 'world-room-1', zoneId: 'zone-1', missionInstanceId: null },
+      }),
+      getPOIs: jest.fn().mockResolvedValue([]),
+      getRoom: jest.fn(),
+      navigate: jest.fn(),
+    };
+    const socketHub = {
+      getSelectedClient: jest.fn().mockReturnValue({
+        characterId: 'char-1', accountId: 'acc-1', roomId: 'room-0', characterName: 'Fox',
+      }),
+      getRoomOccupants: jest.fn().mockReturnValue([]),
+      emitToRoom: jest.fn(),
+    };
+    const matrixService = { getActiveNode: jest.fn().mockResolvedValue(null) };
+    const instanceRepo = {
+      findInstanceByRoomId: jest.fn().mockResolvedValue(null),
+      updateInstanceStatus: jest.fn(),
+    };
+    const output = { emit: jest.fn(), data: { characterId: 'char-1', accountId: 'acc-1' } };
+
+    const dispatcher = new CommandDispatcher(
+      worldService as any, socketHub as any, matrixService as any, registry, instanceRepo as any
+    );
+
+    await dispatcher.dispatch(output as any, 'north');
+
+    expect(instanceRepo.updateInstanceStatus).not.toHaveBeenCalled();
+  });
+});

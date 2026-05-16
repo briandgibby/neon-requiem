@@ -19,7 +19,23 @@ export class CommandDispatcher {
     private readonly socketHub: SocketHub,
     private readonly matrixService: MatrixService,
     private readonly ecsRegistry?: EcsRegistry,
+    private readonly instanceRepo?: {
+      findInstanceByRoomId: (id: string) => Promise<any>;
+      updateInstanceStatus: (id: string, status: string) => Promise<any>;
+    },
   ) {}
+
+  private async activateInstanceIfNeeded(room: any): Promise<void> {
+    if (!this.instanceRepo || !room?.missionInstanceId) return;
+    try {
+      const instance = await this.instanceRepo.findInstanceByRoomId(room.id);
+      if (instance?.status === 'PENDING') {
+        await this.instanceRepo.updateInstanceStatus(instance.id, 'ACTIVE');
+      }
+    } catch (_err) {
+      // Non-fatal
+    }
+  }
 
   private isJackedIn(characterId: string): boolean {
     if (!this.ecsRegistry) return false;
@@ -143,6 +159,7 @@ export class CommandDispatcher {
           respond('room_data', room);
           const pois = await this.worldService.getPOIs(result.room.zoneId);
           respond('local_pois', pois);
+          await this.activateInstanceIfNeeded(result.room);
         } else {
           message(result.error || 'You cannot go that way.', 'error');
         }
