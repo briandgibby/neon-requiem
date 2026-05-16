@@ -21,7 +21,7 @@ export class CommandDispatcher {
     private readonly ecsRegistry?: EcsRegistry,
     private readonly instanceRepo?: {
       findInstanceByRoomId: (id: string) => Promise<any>;
-      updateInstanceStatus: (id: string, status: string) => Promise<any>;
+      updateInstanceStatus: (id: string, status: 'PENDING' | 'ACTIVE' | 'COMPLETED' | 'ABANDONED') => Promise<any>;
     },
   ) {}
 

@@ -14,6 +14,8 @@ import { MatrixTickSystem } from './engine/ecs/systems/matrix-tick-system';
 import { IceAiSystem } from './engine/ecs/systems/ice-ai-system';
 import { MissionSystem } from './engine/ecs/systems/mission-system';
 import { EntityCleanupSystem } from './engine/ecs/systems/entity-cleanup-system';
+import { InstanceRepository } from './domains/mission/instance.repository';
+import { InstanceCleanupSystem } from './engine/ecs/systems/instance-cleanup-system';
 import { MoveDispatcher } from './engine/ecs/combat/move-dispatcher';
 import { AttackExecutor } from './engine/ecs/combat/moves/attack-executor';
 import { MatrixBruteExecutor } from './engine/ecs/combat/moves/matrix-brute-executor';
@@ -123,6 +125,7 @@ async function bootstrap() {
 
   const matrixRepo = new MatrixRepository(db);
   const missionRepo = new MissionRepository(db);
+  const instanceRepo = new InstanceRepository(db);
   const matrixService = new MatrixService(
     matrixRepo,
     ecsRegistry,
@@ -167,7 +170,9 @@ async function bootstrap() {
 
   const auditLogger = new AuditLogger(db);
   const missionGen = new MissionGenerator();
-  const missionService = new MissionService(auditLogger, missionRepo, charRepo, worldRepo, missionGen, ecsRegistry, mobRepo);
+  const missionService = new MissionService(
+    auditLogger, missionRepo, charRepo, worldRepo, missionGen, ecsRegistry, mobRepo, instanceRepo, matrixRepo
+  );
   registerMissionRoutes(app, missionService, authService);
 
   const shopRepo = new ShopRepository(db);
@@ -180,13 +185,14 @@ async function bootstrap() {
   heartbeat.subscribe(new RegenSystem(ecsRegistry));
   heartbeat.subscribe(new CombatTickSystem(ecsRegistry));
   heartbeat.subscribe(new CombatReinforcementSystem(ecsRegistry, mobRepo));
-  heartbeat.subscribe(new MatrixTickSystem(ecsRegistry, matrixRepo));
+  heartbeat.subscribe(new MatrixTickSystem(ecsRegistry, matrixRepo, instanceRepo));
   heartbeat.subscribe(new IceAiSystem(ecsRegistry));
   heartbeat.subscribe(new MissionSystem(ecsRegistry, (missionId, index) => missionService.updateObjectiveProgress(missionId, index)));
   heartbeat.subscribe(new EntityCleanupSystem(ecsRegistry));
+  heartbeat.subscribe(new InstanceCleanupSystem(ecsRegistry, instanceRepo));
 
   const socketHub = new SocketHub(app.server, authService, presenceService, syncCoordinator);
-  const commandDispatcher = new CommandDispatcher(worldService, socketHub, matrixService);
+  const commandDispatcher = new CommandDispatcher(worldService, socketHub, matrixService, ecsRegistry, instanceRepo);
 
   socketHub.onConnection(async (socket) => {
     const accountId = socket.data.accountId;
