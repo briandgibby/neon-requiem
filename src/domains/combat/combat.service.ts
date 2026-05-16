@@ -12,19 +12,20 @@ import { NotFoundError, ValidationError } from '../../shared/errors';
 import { Tickable } from '../../engine/heartbeat';
 import { EcsRegistry } from '../../engine/ecs/registry';
 import { MoveDispatcher } from '../../engine/ecs/combat/move-dispatcher';
-import { 
-  ComponentTypes, 
-  CombatSessionComponent, 
-  CombatStatusComponent, 
-  IdentityComponent, 
-  PositionComponent, 
-  HealthComponent, 
-  StunComponent, 
-  ManaComponent, 
-  ApComponent, 
-  AttributesComponent, 
+import {
+  ComponentTypes,
+  CombatSessionComponent,
+  CombatStatusComponent,
+  IdentityComponent,
+  PositionComponent,
+  HealthComponent,
+  StunComponent,
+  ManaComponent,
+  ApComponent,
+  AttributesComponent,
   SkillsComponent,
   PlayerIdComponent,
+  CharacterClassComponent,
 } from '../../engine/ecs/components';
 
 import { PlayerSyncCoordinator } from '../../engine/player-sync-coordinator';
@@ -168,6 +169,10 @@ export class CombatService implements Tickable {
       masteryRifle: character.masteryRifle,
       masteryAutomatic: character.masteryAutomatic,
       armorValue: character.armorValue,
+    });
+
+    this.ecsRegistry.addComponent<CharacterClassComponent>(entityId, ComponentTypes.CharacterClass, {
+      className: character.className,
     });
 
     this.ecsRegistry.addComponent<CombatStatusComponent>(entityId, ComponentTypes.CombatStatus, {

@@ -3,11 +3,11 @@ import { NotFoundError, ValidationError } from '../../shared/errors';
 import { MatrixHackingResult, DataSpikeResult, IceAttackResult, AlertLevel, RepairResult } from './matrix.types';
 import { EcsRegistry } from '../../engine/ecs/registry';
 import { MoveDispatcher } from '../../engine/ecs/combat/move-dispatcher';
-import { 
-  ComponentTypes, 
-  MatrixNodeComponent, 
-  DeckerComponent, 
-  IdentityComponent, 
+import {
+  ComponentTypes,
+  MatrixNodeComponent,
+  DeckerComponent,
+  IdentityComponent,
   PlayerIdComponent,
   HealthComponent,
   IceComponent,
@@ -15,7 +15,8 @@ import {
   ApComponent,
   AttributesComponent,
   CombatStatusComponent,
-  PositionComponent
+  PositionComponent,
+  CharacterClassComponent,
 } from '../../engine/ecs/components';
 import { MAX_AP } from '../../shared/constants';
 
@@ -259,6 +260,9 @@ export class MatrixService {
        this.ecsRegistry.addComponent<HealthComponent>(entityId, ComponentTypes.Health, { current: character.currentHp, max: character.maxHp, lastRegenAt: Date.now() });
        this.ecsRegistry.addComponent<StunComponent>(entityId, ComponentTypes.Stun, { current: character.currentStun, max: character.maxStun, lastRegenAt: Date.now() });
        this.ecsRegistry.addComponent<PositionComponent>(entityId, ComponentTypes.Position, { roomId });
+       this.ecsRegistry.addComponent<CharacterClassComponent>(entityId, ComponentTypes.CharacterClass, {
+         className: character.className,
+       });
        this.ecsRegistry.addComponent<AttributesComponent>(entityId, ComponentTypes.Attributes, {
          level: character.level, body: character.body, agility: character.agility, dexterity: character.dexterity,
          strength: character.strength, logic: character.logic, intuition: character.intuition,

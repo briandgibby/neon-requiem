@@ -27,6 +27,19 @@ import { PresenceService } from './engine/presence.service';
 import { PlayerSyncCoordinator } from './engine/player-sync-coordinator';
 import { SocketHub } from './engine/socket-hub';
 import { CommandDispatcher } from './engine/command-dispatcher';
+import { CommandRegistry } from './engine/command-registry';
+import { MoveHandler } from './engine/commands/move.handler';
+import { NavigateHandler } from './engine/commands/navigate.handler';
+import { LookHandler } from './engine/commands/look.handler';
+import { WhoHandler } from './engine/commands/who.handler';
+import { SayHandler } from './engine/commands/say.handler';
+import { TellHandler } from './engine/commands/tell.handler';
+import { HelpHandler } from './engine/commands/help.handler';
+import { JackInHandler } from './engine/commands/jackin.handler';
+import { JackOutHandler } from './engine/commands/jackout.handler';
+import { BruteHandler } from './engine/commands/brute.handler';
+import { SleazeHandler } from './engine/commands/sleaze.handler';
+import { DataSpikeHandler } from './engine/commands/spike.handler';
 import { AuthRepository } from './domains/auth/auth.repository';
 import { AuthService } from './domains/auth/auth.service';
 import { registerAuthRoutes } from './domains/auth/auth.routes';
@@ -55,7 +68,7 @@ import { registerShopRoutes } from './domains/shop/shop.routes';
 import { AuditLogger } from './engine/audit-logger';
 import type { Socket } from 'socket.io';
 import { ComponentTypes, MissionTargetComponent } from './engine/ecs/components';
-import type { AuthPayload, Direction } from './shared/types';
+import type { AuthPayload } from './shared/types';
 import type { JwtSigner } from './domains/auth/auth.types';
 
 function requireEnv(name: string): string {
@@ -192,7 +205,22 @@ async function bootstrap() {
   heartbeat.subscribe(new InstanceCleanupSystem(ecsRegistry, instanceRepo));
 
   const socketHub = new SocketHub(app.server, authService, presenceService, syncCoordinator);
-  const commandDispatcher = new CommandDispatcher(worldService, socketHub, matrixService, ecsRegistry, instanceRepo);
+
+  const commandRegistry = new CommandRegistry();
+  commandRegistry.register(new MoveHandler(worldService, socketHub, instanceRepo));
+  commandRegistry.register(new NavigateHandler(worldService, socketHub, instanceRepo));
+  commandRegistry.register(new LookHandler(worldService, matrixService, socketHub));
+  commandRegistry.register(new WhoHandler(socketHub));
+  commandRegistry.register(new SayHandler(socketHub));
+  commandRegistry.register(new TellHandler(socketHub));
+  commandRegistry.register(new JackInHandler(matrixService));
+  commandRegistry.register(new JackOutHandler(matrixService));
+  commandRegistry.register(new BruteHandler(matrixService));
+  commandRegistry.register(new SleazeHandler(matrixService));
+  commandRegistry.register(new DataSpikeHandler(matrixService));
+  commandRegistry.register(new HelpHandler(commandRegistry));
+
+  const commandDispatcher = new CommandDispatcher(commandRegistry, socketHub, ecsRegistry);
 
   socketHub.onConnection(async (socket) => {
     const accountId = socket.data.accountId;

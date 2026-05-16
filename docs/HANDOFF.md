@@ -32,8 +32,8 @@
   - `PlayerSyncCoordinator`: Transactional ECS-to-DB player snapshot persistence for disconnects and periodic syncs.
 - Verified backend result (2026-05-16):
   - `npm run build`: passes.
-  - `npm test -- --silent`: passes, **24 suites / 132 tests** (all Phase 4.3 work included).
-- Git branch at session end: `feat/phase-4.3` (15 commits ahead of main; not yet merged).
+  - `npm test -- --silent`: passes, **24 suites / 133 tests** (all Phase 4.3 + CommandRegistry refactor included).
+- Git branch at session end: `feat/phase-4.3` (16 commits ahead of main; not yet merged).
 
 ---
 
@@ -148,6 +148,21 @@ The project has moved from a shallow procedural model to a **Deep Module** archi
    - All 9 tasks committed; 22 suites / 112 tests green.
    - **Pending commit:** `tests/mission/mission.service.test.ts` has an uncommitted `MissionRepository.findActiveMissionsByNodeRoom` test block — commit this before starting Phase 4.3.
 
+13. **CommandRegistry Architecture Refactor (2026-05-16):**
+   - Branch: `feat/phase-4.3`
+   - Replaced the monolithic `CommandDispatcher` if/else chain with a `CommandRegistry` + `CommandHandler` seam.
+   - `CommandDispatcher` is now a thin 5-step router: parse → look up → resolve client → mode guard → execute (110 lines, down from 235).
+   - Each command is its own class in `src/engine/commands/` with constructor-injected deps, `aliases`, `mode`, `label`, `description`, and `usage` metadata.
+   - **Four execution modes enforced by the dispatcher:** `physical` (blocked if jacked in), `matrix` (blocked if not jacked in), `wireless` (blocked if jacked in or wrong class), `any` (unrestricted).
+   - `CharacterClassComponent` added to ECS and cached at entity creation in both `CombatService.joinCombat` and `MatrixService.jackIn` — zero DB overhead at dispatch time.
+   - Wireless class whitelist: `decker`, `technomancer`, `rigger`.
+   - Multi-word normalization (`"jack in"` → `'jackin'`) handled by a static map in `parseCommand`; registry stays a plain `Map`.
+   - `CommandRegistry.getAll()` exposes handler metadata for the hotkey picker UI (accessibility path: players can configure all commands via dropdowns, no typing required).
+   - Social handlers (`SayHandler`, `TellHandler`) inject `SocketHub` directly; all other handlers are socket-agnostic.
+   - `HelpHandler` renders dynamically from the registry; new commands appear in `help` output automatically.
+   - `CONTEXT.md` created at `docs/CONTEXT.md` with canonical domain vocabulary: Rigger, Vehicle, Compulsory Follow, Wireless Mode, Hotkey, Hotkey Picker, and Mission concepts.
+   - Tests updated; 24 suites / 133 tests green.
+
 12. **Phase 4.3 — Mission Instancing, Physical Body Persistence & Alert Escalation (COMPLETE, 2026-05-16):**
    - Branch: `feat/phase-4.3` (15 commits; not yet merged to main)
    - Spec: `docs/superpowers/specs/2026-05-13-phase-4.3-instancing-body-persistence-design.md`
@@ -172,10 +187,15 @@ The project has moved from a shallow procedural model to a **Deep Module** archi
 **Merge and continue**
 
 1. **Merge `feat/phase-4.3` to main** — all tests green, build clean; ready to merge.
-2. **Elite mob spawn logic** — `MobTemplate.eliteOnly`/`corporationId` fields exist; spawn-at-RED trigger in `InstanceCleanupSystem` or a new `EliteSpawnSystem` is the next concrete task.
-3. **Safe-zone mob AI enforcement** — `Room.isSafeZone` / `safeZoneOverrideActive` fields exist; mob AI should read `effectiveSafeZone = isSafeZone && !safeZoneOverrideActive` before targeting.
-4. **Mob aggro/follow system** — room-to-room chase; safe-zone boundary enforcement; separate phase.
-5. **Body-guarding mechanic** — tank actively shields a jacked-in decker's physical body; separate phase.
+2. **Remaining architecture candidates from `/improve-codebase-architecture` session:**
+   - **Candidate 2:** Extract `PlayerEntityBuilder` to eliminate duplicated ECS entity construction between `CombatService.joinCombat` and `MatrixService.jackIn`.
+   - **Candidate 3:** Fix `MissionService` → `matrixRepo` cross-domain call; move the inline `onNodeCreated` callback from `server.ts` into a named `MissionService` method.
+   - **Candidate 4:** Evaluate folding `PresenceService` EventEmitter wrapper into `RoomPresence` directly.
+3. **Elite mob spawn logic** — `MobTemplate.eliteOnly`/`corporationId` fields exist; spawn-at-RED trigger in `InstanceCleanupSystem` or a new `EliteSpawnSystem` is the next concrete task.
+4. **Safe-zone mob AI enforcement** — `Room.isSafeZone` / `safeZoneOverrideActive` fields exist; mob AI should read `effectiveSafeZone = isSafeZone && !safeZoneOverrideActive` before targeting.
+5. **Mob aggro/follow system** — room-to-room chase; safe-zone boundary enforcement; separate phase.
+6. **Body-guarding mechanic** — tank actively shields a jacked-in decker's physical body; separate phase.
+7. **Hotkey picker UI** — `CommandRegistry.getAll()` is ready; frontend component needed to let players configure hotkeys via dropdowns (accessibility requirement: full playability without typing).
 
 **Remaining carry-forward items:**
 - Snapshot history/admin tooling — no admin-facing snapshot history view yet

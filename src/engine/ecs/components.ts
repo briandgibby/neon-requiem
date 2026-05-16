@@ -19,6 +19,7 @@ export enum ComponentTypes {
   Ice = 'ice',
   Decker = 'decker',
   MissionTarget = 'mission_target',
+  CharacterClass = 'character_class',
 }
 
 export interface IdentityComponent {
@@ -132,4 +133,8 @@ export interface MissionTargetComponent {
   goalType: 'KILL' | 'HACK' | 'COLLECT' | 'VISIT';
   isCompleted: boolean;
   hackThreshold?: number;
+}
+
+export interface CharacterClassComponent {
+  className: string;
 }
