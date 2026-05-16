@@ -200,6 +200,105 @@ describe('MissionService', () => {
   });
 });
 
+describe('acceptMission — instance creation', () => {
+  it('creates a MissionInstance record at acceptance', async () => {
+    const instanceRepo = {
+      createInstance: jest.fn().mockResolvedValue({ id: 'inst-1' }),
+      createInstanceRooms: jest.fn().mockResolvedValue([
+        { id: 'iroom-1', slug: 'ir-inst-1-office-a-0' },
+      ]),
+    };
+    const missionRepo = {
+      findTemplateBySlug: jest.fn().mockResolvedValue({
+        id: 'tmpl-1',
+        type: 'ASSASSINATION',
+        baseDifficulty: 1,
+        name: 'Hit Job',
+      }),
+      createActiveMission: jest.fn().mockResolvedValue({ id: 'mission-1', seed: 'abc' }),
+      updateActiveMission: jest.fn().mockResolvedValue(undefined),
+    };
+    const charRepo = {
+      findByIdAndAccount: jest.fn().mockResolvedValue({ id: 'char-1', name: 'Fox' }),
+    };
+    const worldRepo = { findRoomBySlug: jest.fn().mockResolvedValue(null) };
+    const missionGen = {
+      generate: jest.fn().mockReturnValue({
+        layout: ['office-a'],
+        objectives: [],
+        spawnData: [],
+        nodeTargetData: [],
+      }),
+    };
+
+    const service = new MissionService(
+      { log: jest.fn() } as any,
+      missionRepo as any,
+      charRepo as any,
+      worldRepo as any,
+      missionGen as any,
+      new EcsRegistry(),
+      undefined,
+      instanceRepo as any,
+    );
+
+    await service.acceptMission({ templateSlug: 'hit-job', characterId: 'char-1', accountId: 'acc-1' });
+
+    expect(instanceRepo.createInstance).toHaveBeenCalledWith(
+      expect.objectContaining({ activeMissionId: 'mission-1', partyLeaderId: 'char-1' })
+    );
+    expect(instanceRepo.createInstanceRooms).toHaveBeenCalledWith('inst-1', ['office-a']);
+  });
+
+  it('creates an instance MatrixNode for MATRIX-type missions', async () => {
+    const instanceRepo = {
+      createInstance: jest.fn().mockResolvedValue({ id: 'inst-1' }),
+      createInstanceRooms: jest.fn().mockResolvedValue([
+        { id: 'iroom-matrix', slug: 'ir-inst-1-server-room-0' },
+      ]),
+    };
+    const matrixRepo = {
+      createMatrixNode: jest.fn().mockResolvedValue({ id: 'mnode-1' }),
+    };
+    const missionRepo = {
+      findTemplateBySlug: jest.fn().mockResolvedValue({
+        id: 'tmpl-2', type: 'MATRIX', baseDifficulty: 2, name: 'Corp Breach',
+      }),
+      createActiveMission: jest.fn().mockResolvedValue({ id: 'mission-2', seed: 'def' }),
+      updateActiveMission: jest.fn().mockResolvedValue(undefined),
+    };
+    const charRepo = { findByIdAndAccount: jest.fn().mockResolvedValue({ id: 'char-1', name: 'Fox' }) };
+    const worldRepo = { findRoomBySlug: jest.fn().mockResolvedValue(null) };
+    const missionGen = {
+      generate: jest.fn().mockReturnValue({
+        layout: ['server-room'],
+        objectives: [{ type: 'HACK_NODE', description: 'Breach the host', isMandatory: true, isCompleted: false }],
+        spawnData: [],
+        nodeTargetData: [{ roomSlug: 'server-room', objectiveIndex: 0, hackThreshold: 4 }],
+      }),
+    };
+
+    const service = new MissionService(
+      { log: jest.fn() } as any,
+      missionRepo as any,
+      charRepo as any,
+      worldRepo as any,
+      missionGen as any,
+      new EcsRegistry(),
+      undefined,
+      instanceRepo as any,
+      matrixRepo as any,
+    );
+
+    await service.acceptMission({ templateSlug: 'corp-breach', characterId: 'char-1', accountId: 'acc-1' });
+
+    expect(matrixRepo.createMatrixNode).toHaveBeenCalledWith(expect.objectContaining({
+      roomId: 'iroom-matrix',
+      requiresPhysicalPresence: true,
+    }));
+  });
+});
+
 describe('MissionRepository.findActiveMissionsByNodeRoom', () => {
   it('returns missions whose nodeTargetData contains the given roomId', async () => {
     const { MissionRepository } = await import('../../src/domains/mission/mission.repository');
