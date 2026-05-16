@@ -54,7 +54,7 @@ export class InstanceRepository {
   }
 
   async updateInstanceStatus(instanceId: string, status: 'PENDING' | 'ACTIVE' | 'COMPLETED' | 'ABANDONED') {
-    const data: any = { status };
+    const data: { status: string; activatedAt?: Date; resolvedAt?: Date } = { status };
     if (status === 'ACTIVE') data.activatedAt = new Date();
     if (status === 'COMPLETED' || status === 'ABANDONED') data.resolvedAt = new Date();
     return this.db.missionInstance.update({ where: { id: instanceId }, data });
@@ -63,7 +63,10 @@ export class InstanceRepository {
   async updateInstanceAlertLevel(instanceId: string, newLevel: string) {
     const instance = await this.db.missionInstance.findUnique({ where: { id: instanceId } });
     if (!instance) return;
-    if (ALERT_ORDER.indexOf(newLevel) <= ALERT_ORDER.indexOf(instance.alertLevel)) return;
+    const newIdx = ALERT_ORDER.indexOf(newLevel);
+    const currentIdx = ALERT_ORDER.indexOf(instance.alertLevel);
+    if (newIdx === -1 || currentIdx === -1) return;  // unknown alert level — do nothing
+    if (newIdx <= currentIdx) return;
     return this.db.missionInstance.update({ where: { id: instanceId }, data: { alertLevel: newLevel } });
   }
 
