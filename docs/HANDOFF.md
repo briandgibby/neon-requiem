@@ -32,7 +32,7 @@
   - `PlayerSyncCoordinator`: Transactional ECS-to-DB player snapshot persistence for disconnects and periodic syncs.
 - Verified backend result (2026-05-16):
   - `npm run build`: passes.
-  - `npm test -- --silent`: passes, **25 suites / 142 tests** (all Phase 4.3 + architecture refactors included).
+  - `npm test -- --silent`: passes, **25 suites / 146 tests** (all Phase 4.3 + architecture refactors + Neon District included).
 - Git branch at session end: `feat/phase-4.3` (16 commits ahead of main; not yet merged).
 
 ---
@@ -197,9 +197,9 @@ The project has moved from a shallow procedural model to a **Deep Module** archi
 **Merge and continue**
 
 1. **Merge `feat/phase-4.3` to main** — all tests green, build clean; ready to merge.
-2. **Remaining architecture candidates from `/improve-codebase-architecture` session:**
-   - **Candidate 4:** Evaluate folding `PresenceService` EventEmitter wrapper into `RoomPresence` directly.
-3. **Elite mob spawn logic** — `MobTemplate.eliteOnly`/`corporationId` fields exist; spawn-at-RED trigger in `InstanceCleanupSystem` or a new `EliteSpawnSystem` is the next concrete task.
+2. All four architecture candidates from `/improve-codebase-architecture` are complete.
+3. **Neon District live test** — run `npx prisma db seed` and walk a character from shadow-hub → shadow-gang-turf → neon-bazaar → shops to verify the world area end-to-end.
+4. **Elite mob spawn logic** — `MobTemplate.eliteOnly`/`corporationId` fields exist; spawn-at-RED trigger in `InstanceCleanupSystem` or a new `EliteSpawnSystem` is the next concrete task.
 4. **Safe-zone mob AI enforcement** — `Room.isSafeZone` / `safeZoneOverrideActive` fields exist; mob AI should read `effectiveSafeZone = isSafeZone && !safeZoneOverrideActive` before targeting.
 5. **Mob aggro/follow system** — room-to-room chase; safe-zone boundary enforcement; separate phase.
 6. **Body-guarding mechanic** — tank actively shields a jacked-in decker's physical body; separate phase.

@@ -135,7 +135,9 @@ export class CharacterService {
       disguiseIdentity: null,
       reputationCorp: input.faction === 'corp' ? 10 : 0,
       reputationShadow: input.faction === 'shadow' ? 10 : 0,
-      areaKnowledge: [],
+      areaKnowledge: input.faction === 'corp'
+        ? ['corp-hub', 'neon-district']
+        : ['shadow-hub', 'neon-district'],
 
       isJackedIn: false,
       activeNodeId: null,

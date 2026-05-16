@@ -133,6 +133,83 @@ async function main() {
     },
   });
 
+  // Create Neon District zone and rooms
+  console.log('Seeding Neon District...');
+
+  const neonZone = await prisma.zone.upsert({
+    where: { slug: 'neon-district' },
+    update: {},
+    create: {
+      slug: 'neon-district',
+      name: 'Neon District',
+      securityRating: 'B',
+    },
+  });
+
+  const neonBazaar = await prisma.room.upsert({
+    where: { slug: 'neon-bazaar' },
+    update: {},
+    create: {
+      slug: 'neon-bazaar',
+      zoneId: neonZone.id,
+      name: 'The Neon Bazaar',
+      description: 'A busy open-air market strung with coloured lights and vendor stalls. The smell of grilled synth-meat and ozone fills the air.',
+      securityRating: 'B',
+      isPOI: true,
+      poiCategory: 'HUB',
+      exits: {
+        south: 'shadow-gang-turf',
+        east: 'neon-arms-dealer',
+        west: 'neon-street-doc',
+      },
+    },
+  });
+
+  await prisma.room.upsert({
+    where: { slug: 'neon-arms-dealer' },
+    update: {},
+    create: {
+      slug: 'neon-arms-dealer',
+      zoneId: neonZone.id,
+      name: 'Iron Hand Armaments',
+      description: 'Racks of legally-grey hardware fill every wall. The proprietor eyes each customer with quiet assessment.',
+      securityRating: 'B',
+      isPOI: true,
+      poiCategory: 'SHOP',
+      exits: {
+        west: 'neon-bazaar',
+      },
+    },
+  });
+
+  await prisma.room.upsert({
+    where: { slug: 'neon-street-doc' },
+    update: {},
+    create: {
+      slug: 'neon-street-doc',
+      zoneId: neonZone.id,
+      name: "Dr. Kira's Patchwork",
+      description: 'A cramped but spotless clinic. Shelves of neatly labelled stims and trauma supplies line the walls behind a scarred counter.',
+      securityRating: 'B',
+      isPOI: true,
+      poiCategory: 'SHOP',
+      exits: {
+        east: 'neon-bazaar',
+      },
+    },
+  });
+
+  // Connect shadow-gang-turf north to the bazaar
+  await prisma.room.update({
+    where: { slug: 'shadow-gang-turf' },
+    data: {
+      exits: {
+        east: STARTING_ROOM_SHADOW,
+        north: 'neon-bazaar',
+      },
+    },
+  });
+
   console.log('Seeding Matrix items...');
   
   // Cyberdecks
@@ -353,6 +430,63 @@ async function main() {
     }
   });
 
+  // Neon District items
+  await prisma.item.upsert({
+    where: { slug: 'ares-predator' },
+    update: {},
+    create: {
+      slug: 'ares-predator',
+      name: 'Ares Predator IV',
+      description: 'The shadowrunner\'s sidearm of choice. Reliable, concealable, and hits hard.',
+      type: 'WEAPON',
+      rarity: 'common',
+      slots: 1,
+      equipSlot: 'HAND_1',
+      stats: { damage: 8, stunModifier: 0 },
+    },
+  });
+
+  await prisma.item.upsert({
+    where: { slug: 'armored-jacket' },
+    update: {},
+    create: {
+      slug: 'armored-jacket',
+      name: 'Armored Jacket',
+      description: 'A heavy synthetic-weave jacket with trauma plates sewn in. Standard issue for anyone who expects trouble.',
+      type: 'ARMOR',
+      rarity: 'common',
+      slots: 1,
+      equipSlot: 'BODY',
+      stats: { armorBonus: 4 },
+    },
+  });
+
+  await prisma.item.upsert({
+    where: { slug: 'stim-patch' },
+    update: {},
+    create: {
+      slug: 'stim-patch',
+      name: 'Stimulant Patch',
+      description: 'A fast-acting dermal patch that clears fatigue and minor stun. Short duration.',
+      type: 'CONSUMABLE',
+      rarity: 'common',
+      slots: 1,
+    },
+  });
+
+  await prisma.item.upsert({
+    where: { slug: 'nano-bandage' },
+    update: {},
+    create: {
+      slug: 'nano-bandage',
+      name: 'NanoBandage',
+      description: 'Self-applying nano-agent wrap. Seals wounds and begins clotting within seconds.',
+      type: 'CONSUMABLE',
+      rarity: 'uncommon',
+      slots: 1,
+    },
+  });
+
   console.log('Seeding Spells and Adept Powers...');
 
   // Spells
@@ -493,6 +627,50 @@ async function main() {
             price: itemData.price,
             stock: -1 // Infinite stock for common items
           }
+        });
+      }
+    }
+  }
+
+  // Iron Hand Armaments inventory
+  const armsShop = await prisma.room.findUnique({ where: { slug: 'neon-arms-dealer' } });
+  if (armsShop) {
+    const armsItems = [
+      { slug: 'ares-predator', price: 400 },
+      { slug: 'armored-jacket', price: 500 },
+      { slug: 'medical-supplies', price: 80 },
+      { slug: 'body-bag', price: 40 },
+      { slug: 'c-squared', price: 35 },
+    ];
+    for (const itemData of armsItems) {
+      const item = await prisma.item.findUnique({ where: { slug: itemData.slug } });
+      if (item) {
+        await prisma.shopItem.upsert({
+          where: { roomId_itemId: { roomId: armsShop.id, itemId: item.id } },
+          update: { price: itemData.price },
+          create: { roomId: armsShop.id, itemId: item.id, price: itemData.price, stock: -1 },
+        });
+      }
+    }
+  }
+
+  // Dr. Kira's Patchwork inventory
+  const streetDoc = await prisma.room.findUnique({ where: { slug: 'neon-street-doc' } });
+  if (streetDoc) {
+    const docItems = [
+      { slug: 'stim-patch', price: 20 },
+      { slug: 'nano-bandage', price: 75 },
+      { slug: 'medical-supplies', price: 50 },
+      { slug: 'trauma-kit', price: 750 },
+      { slug: 'combat-stim', price: 150 },
+    ];
+    for (const itemData of docItems) {
+      const item = await prisma.item.findUnique({ where: { slug: itemData.slug } });
+      if (item) {
+        await prisma.shopItem.upsert({
+          where: { roomId_itemId: { roomId: streetDoc.id, itemId: item.id } },
+          update: { price: itemData.price },
+          create: { roomId: streetDoc.id, itemId: item.id, price: itemData.price, stock: -1 },
         });
       }
     }
