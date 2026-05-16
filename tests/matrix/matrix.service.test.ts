@@ -476,6 +476,43 @@ describe('MatrixService', () => {
     });
   });
 
+  describe('jackOut — physicalRoomId restoration', () => {
+    it('restores PositionComponent.roomId to physicalRoomId after graceful jack-out', async () => {
+      const registry = new EcsRegistry();
+
+      // Manually set up a jacked-in entity
+      const entityId = registry.createEntity();
+      registry.addComponent<PlayerIdComponent>(entityId, ComponentTypes.PlayerId, {
+        characterId: 'char-1', accountId: 'account-1',
+      });
+      registry.addComponent<PositionComponent>(entityId, ComponentTypes.Position, {
+        roomId: 'node-entity-id', // currently tracking matrix persona location
+      });
+      registry.addComponent<DeckerComponent>(entityId, ComponentTypes.Decker, {
+        activeNodeEntityId: 'node-entity-id',
+        physicalRoomId: 'physical-room-1',
+        attack: 5, sleaze: 4, firewall: 3, biofeedbackBuffer: 2, overwatchScore: 0,
+      });
+
+      const matrixRepo = {
+        getCharacterWithEquipment: jest.fn().mockResolvedValue({
+          id: 'char-1', isJackedIn: true, maxStun: 100, currentStun: 100,
+        }),
+        updateCharacterLink: jest.fn().mockResolvedValue(undefined),
+      };
+
+      const service = new MatrixService(matrixRepo as any, registry, new MoveDispatcher());
+
+      await service.jackOut('char-1', 'account-1');
+
+      const pos = registry.getComponent<PositionComponent>(entityId, ComponentTypes.Position);
+      expect(pos!.roomId).toBe('physical-room-1');
+
+      const decker = registry.getComponent<DeckerComponent>(entityId, ComponentTypes.Decker);
+      expect(decker).toBeUndefined();
+    });
+  });
+
   describe('jackIn — physicalRoomId and presence validation', () => {
     function buildJackInEnv(nodeOverrides: any = {}, roomOverride: any = null) {
       const registry = new EcsRegistry();

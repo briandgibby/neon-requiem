@@ -306,8 +306,16 @@ export class MatrixService {
 
     const entityId = this.ecsRegistry.getEntityByComponent<PlayerIdComponent>(ComponentTypes.PlayerId, p => p.characterId === characterId);
     if (entityId) {
+      const decker = this.ecsRegistry.getComponent<DeckerComponent>(entityId, ComponentTypes.Decker);
+      const physicalRoomId = decker?.physicalRoomId;
+
       this.ecsRegistry.removeComponent(entityId, ComponentTypes.Decker);
-      // We might destroy the entity if they are not in physical combat, but for now we just remove Decker
+
+      // Restore physical position now that the matrix dive is over
+      if (physicalRoomId) {
+        const pos = this.ecsRegistry.getComponent<PositionComponent>(entityId, ComponentTypes.Position);
+        if (pos) pos.roomId = physicalRoomId;
+      }
     }
 
     if (isEmergency) {
