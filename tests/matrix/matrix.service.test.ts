@@ -475,4 +475,65 @@ describe('MatrixService', () => {
       expect(decker!.overwatchScore).toBe(1);
     });
   });
+
+  describe('jackIn — physicalRoomId and presence validation', () => {
+    function buildJackInEnv(nodeOverrides: any = {}, roomOverride: any = null) {
+      const registry = new EcsRegistry();
+      const matrixRepo = {
+        getCharacterWithEquipment: jest.fn().mockResolvedValue({
+          id: 'char-1',
+          name: 'Fox',
+          isJackedIn: false,
+          className: 'decker',
+          currentHp: 100, maxHp: 100,
+          currentStun: 100, maxStun: 100,
+          level: 1, body: 3, agility: 4, dexterity: 4, strength: 3,
+          logic: 6, intuition: 5, willpower: 4, charisma: 2, luck: 3,
+          inventory: [{ item: { type: 'DECK', stats: { attack: 5, sleaze: 4, firewall: 3, biofeedbackBuffer: 2 } }, isEquipped: true }],
+        }),
+        findNodeByRoomId: jest.fn().mockResolvedValue({
+          id: 'node-db-1', slug: 'corp-host', name: 'Corp Host',
+          securityLevel: 2, alertLevel: 'GREEN', activeIC: [],
+          requiresPhysicalPresence: false,
+          ...nodeOverrides,
+        }),
+        findRoomById: jest.fn().mockResolvedValue(
+          roomOverride ?? { id: 'room-1', missionInstanceId: null }
+        ),
+        updateCharacterLink: jest.fn().mockResolvedValue(undefined),
+      };
+      const dispatcher = new MoveDispatcher();
+      const service = new MatrixService(matrixRepo as any, registry, dispatcher);
+      return { service, registry, matrixRepo };
+    }
+
+    it('sets physicalRoomId on DeckerComponent at jack-in', async () => {
+      const { service, registry } = buildJackInEnv();
+
+      await service.jackIn('char-1', 'account-1', 'room-1');
+
+      const entityId = registry.getEntityByComponent<PlayerIdComponent>(
+        ComponentTypes.PlayerId,
+        (p) => p.characterId === 'char-1'
+      );
+      const decker = registry.getComponent<DeckerComponent>(entityId!, ComponentTypes.Decker);
+      expect(decker!.physicalRoomId).toBe('room-1');
+    });
+
+    it('rejects jack-in when node requiresPhysicalPresence and room is not an instance room', async () => {
+      const { service } = buildJackInEnv({ requiresPhysicalPresence: true });
+
+      await expect(service.jackIn('char-1', 'account-1', 'room-1'))
+        .rejects.toThrow('hardline connection');
+    });
+
+    it('allows jack-in when node requiresPhysicalPresence and room IS an instance room', async () => {
+      const { service } = buildJackInEnv(
+        { requiresPhysicalPresence: true },
+        { id: 'room-1', missionInstanceId: 'inst-1' }
+      );
+
+      await expect(service.jackIn('char-1', 'account-1', 'room-1')).resolves.toBeDefined();
+    });
+  });
 });

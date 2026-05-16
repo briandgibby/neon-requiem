@@ -231,6 +231,15 @@ export class MatrixService {
       throw new ValidationError('No Cyberdeck equipped and no neural resonance detected');
     }
 
+    // Check physical presence requirement for instance nodes
+    const nodeData = await this.matrixRepo.findNodeByRoomId(roomId);
+    if (nodeData && (nodeData as any).requiresPhysicalPresence) {
+      const room = await this.matrixRepo.findRoomById(roomId);
+      if (!room?.missionInstanceId) {
+        throw new ValidationError('This host requires a hardline connection — you need to be on-site.');
+      }
+    }
+
     const nodeEntityId = await this.getOrCreateEcsNode(roomId);
     const node = this.getEcsNodeView(nodeEntityId);
     if (!node) throw new ValidationError('Active Matrix Node not found');
@@ -272,7 +281,7 @@ export class MatrixService {
 
     this.ecsRegistry.addComponent<DeckerComponent>(entityId, ComponentTypes.Decker, {
       activeNodeEntityId: nodeEntityId,
-      physicalRoomId: '',
+      physicalRoomId: roomId,
       attack,
       sleaze,
       firewall,
