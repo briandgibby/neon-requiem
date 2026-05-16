@@ -23,7 +23,6 @@ import { MatrixSleazeExecutor } from './engine/ecs/combat/moves/matrix-sleaze-ex
 import { MatrixDataSpikeExecutor } from './engine/ecs/combat/moves/matrix-data-spike-executor';
 import { SecurityPatrol } from './engine/security-patrol';
 import { RoomPresence } from './engine/room-presence';
-import { PresenceService } from './engine/presence.service';
 import { PlayerSyncCoordinator } from './engine/player-sync-coordinator';
 import { SocketHub } from './engine/socket-hub';
 import { CommandDispatcher } from './engine/command-dispatcher';
@@ -111,7 +110,6 @@ async function bootstrap() {
 
   // Shared Engine Services
   const roomPresence = new RoomPresence();
-  const presenceService = new PresenceService(roomPresence);
   const ecsRegistry = new EcsRegistry();
   const syncCoordinator = new PlayerSyncCoordinator(db, ecsRegistry, new AuditLogger(db));
   const heartbeat = new Heartbeat(TICK_RATE_MS);
@@ -132,7 +130,7 @@ async function bootstrap() {
   const charService = new CharacterService(charRepo, worldRepo);
   registerCharacterRoutes(app, charService, authService);
 
-  const worldService = new WorldService(worldRepo, charRepo, presenceService);
+  const worldService = new WorldService(worldRepo, charRepo, roomPresence);
   registerWorldRoutes(app, worldService, authService);
 
   const matrixRepo = new MatrixRepository(db);
@@ -188,7 +186,7 @@ async function bootstrap() {
   heartbeat.subscribe(new EntityCleanupSystem(ecsRegistry));
   heartbeat.subscribe(new InstanceCleanupSystem(ecsRegistry, instanceRepo));
 
-  const socketHub = new SocketHub(app.server, authService, presenceService, syncCoordinator);
+  const socketHub = new SocketHub(app.server, authService, roomPresence, syncCoordinator);
 
   const commandRegistry = new CommandRegistry();
   commandRegistry.register(new MoveHandler(worldService, socketHub, instanceRepo));
