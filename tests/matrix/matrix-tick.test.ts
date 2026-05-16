@@ -68,3 +68,58 @@ describe('MatrixTickSystem', () => {
     expect(matrixRepo.updateNodeAlert).not.toHaveBeenCalled();
   });
 });
+
+describe('MatrixTickSystem — instance alert sync', () => {
+  afterEach(() => jest.restoreAllMocks());
+
+  it('syncs GREEN alert decay to the linked MissionInstance', async () => {
+    const registry = new EcsRegistry();
+    const matrixRepo = { updateNodeAlert: jest.fn().mockResolvedValue(undefined) };
+    const instanceRepo = {
+      findInstanceByRoomId: jest.fn().mockResolvedValue({ id: 'inst-1', alertLevel: 'YELLOW' }),
+      updateInstanceAlertLevel: jest.fn().mockResolvedValue(undefined),
+    };
+    jest.spyOn(Math, 'random').mockReturnValue(0.05); // triggers decay
+
+    const system = new MatrixTickSystem(registry, matrixRepo as any, instanceRepo as any);
+
+    const nodeEntityId = registry.createEntity();
+    registry.addComponent<MatrixNodeComponent>(nodeEntityId, ComponentTypes.MatrixNode, {
+      nodeId: 'node-db-1',
+      securityLevel: 2,
+      alertLevel: 'YELLOW',
+      linkedRoomId: 'room-1',
+      breachProgress: 0,
+    });
+
+    await system.onTick(1);
+
+    expect(instanceRepo.findInstanceByRoomId).toHaveBeenCalledWith('room-1');
+    expect(instanceRepo.updateInstanceAlertLevel).toHaveBeenCalledWith('inst-1', 'GREEN');
+  });
+
+  it('does NOT call updateInstanceAlertLevel when node has no linked instance', async () => {
+    const registry = new EcsRegistry();
+    const matrixRepo = { updateNodeAlert: jest.fn().mockResolvedValue(undefined) };
+    const instanceRepo = {
+      findInstanceByRoomId: jest.fn().mockResolvedValue(null),
+      updateInstanceAlertLevel: jest.fn(),
+    };
+    jest.spyOn(Math, 'random').mockReturnValue(0.05);
+
+    const system = new MatrixTickSystem(registry, matrixRepo as any, instanceRepo as any);
+
+    const nodeEntityId = registry.createEntity();
+    registry.addComponent<MatrixNodeComponent>(nodeEntityId, ComponentTypes.MatrixNode, {
+      nodeId: 'node-db-1',
+      securityLevel: 2,
+      alertLevel: 'YELLOW',
+      linkedRoomId: 'room-1',
+      breachProgress: 0,
+    });
+
+    await system.onTick(1);
+
+    expect(instanceRepo.updateInstanceAlertLevel).not.toHaveBeenCalled();
+  });
+});

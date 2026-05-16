@@ -2,6 +2,7 @@ import { EcsRegistry } from '../registry';
 import { Tickable } from '../../heartbeat';
 import { ComponentTypes, MatrixNodeComponent } from '../components';
 import { MatrixRepository } from '../../../domains/matrix/matrix.repository';
+import { InstanceRepository } from '../../../domains/mission/instance.repository';
 
 export class MatrixTickSystem implements Tickable {
   readonly name = 'ecs_matrix_tick_system';
@@ -10,6 +11,7 @@ export class MatrixTickSystem implements Tickable {
   constructor(
     private readonly registry: EcsRegistry,
     private readonly matrixRepo: MatrixRepository,
+    private readonly instanceRepo?: InstanceRepository,
   ) {}
 
   async onTick(_tickCount: number): Promise<void> {
@@ -25,6 +27,18 @@ export class MatrixTickSystem implements Tickable {
           await this.matrixRepo.updateNodeAlert(node.nodeId, 'GREEN');
         } catch (_err) {
           // Non-fatal: ECS state is authoritative for the session
+        }
+
+        // Sync alert decay to the mission instance if this node belongs to one
+        if (this.instanceRepo && node.linkedRoomId) {
+          try {
+            const instance = await this.instanceRepo.findInstanceByRoomId(node.linkedRoomId);
+            if (instance) {
+              await this.instanceRepo.updateInstanceAlertLevel(instance.id, 'GREEN');
+            }
+          } catch (_err) {
+            // Non-fatal
+          }
         }
       }
     }
