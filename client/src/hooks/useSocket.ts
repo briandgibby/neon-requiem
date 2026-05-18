@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { io, Socket } from 'socket.io-client';
+import { API_BASE_URL } from '../lib/api';
 
 export const useSocket = (token?: string) => {
   const [isConnected, setIsConnected] = useState(false);
@@ -8,7 +9,7 @@ export const useSocket = (token?: string) => {
   useEffect(() => {
     if (!token) return;
 
-    const socket = io('http://localhost:3000', {
+    const socket = io(API_BASE_URL, {
       auth: { token },
       reconnectionAttempts: 5,
     });

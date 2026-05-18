@@ -17,14 +17,40 @@ export interface TerminalHandle {
 export const Terminal = forwardRef<TerminalHandle, TerminalProps>(({ onInput, isMatrixMode }, ref) => {
   const terminalRef = useRef<HTMLDivElement>(null);
   const xtermRef = useRef<XTerm | null>(null);
-  const fitAddonRef = useRef<FitAddon | null>(null);
   const commandBuffer = useRef<string>('');
+  const onInputRef = useRef(onInput);
+  const isReadyRef = useRef(false);
+  const pendingWritesRef = useRef<Array<{ method: 'write' | 'writeln'; text: string }>>([]);
 
   const getPrompt = () => isMatrixMode ? '\x1b[1;36m[LINK] > \x1b[0m' : '\x1b[1;32m> \x1b[0m';
 
+  useEffect(() => {
+    onInputRef.current = onInput;
+  }, [onInput]);
+
+  const writeToTerminal = (method: 'write' | 'writeln', text: string) => {
+    const term = xtermRef.current;
+    if (!term || !isReadyRef.current) {
+      pendingWritesRef.current.push({ method, text });
+      return;
+    }
+
+    try {
+      term[method](text);
+    } catch (err) {
+      console.error('[Terminal] xterm write failed:', err);
+    }
+  };
+
+  const flushPendingWrites = () => {
+    const pending = pendingWritesRef.current;
+    pendingWritesRef.current = [];
+    pending.forEach(({ method, text }) => writeToTerminal(method, text));
+  };
+
   useImperativeHandle(ref, () => ({
-    write: (text: string) => xtermRef.current?.write(text),
-    writeln: (text: string) => xtermRef.current?.writeln(text),
+    write: (text: string) => writeToTerminal('write', text),
+    writeln: (text: string) => writeToTerminal('writeln', text),
     clear: () => xtermRef.current?.clear(),
   }));
 
@@ -39,7 +65,7 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(({ onInput, is
       };
       
       // Re-write the prompt if it was just changed
-      xtermRef.current.write('\r\n' + getPrompt());
+      writeToTerminal('write', '\r\n' + getPrompt());
     }
   }, [isMatrixMode]);
 
@@ -62,41 +88,62 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(({ onInput, is
     term.loadAddon(fitAddon);
     
     term.open(terminalRef.current);
-    fitAddon.fit();
 
     xtermRef.current = term;
-    fitAddonRef.current = fitAddon;
 
-    term.writeln('\x1b[1;32mNEON REQUIEM [Version 1.0.0]\x1b[0m');
-    term.writeln('Connecting to neural link...\x1b[5m_\x1b[0m');
-    term.write('\r\n' + getPrompt());
+    // Defer fit and initial writes until after first paint so the flex container
+    // has real pixel dimensions — calling fit() with a 0-height element corrupts
+    // the renderer's cell metrics and crashes subsequent writes.
+    let fitAttempts = 0;
+    let rafId = 0;
+    const initializeTerminal = () => {
+      const bounds = terminalRef.current?.getBoundingClientRect();
+      if ((!bounds || bounds.width === 0 || bounds.height === 0) && fitAttempts < 10) {
+        fitAttempts += 1;
+        rafId = requestAnimationFrame(initializeTerminal);
+        return;
+      }
+
+      try {
+        fitAddon.fit();
+        isReadyRef.current = true;
+        writeToTerminal('writeln', '\x1b[1;32mNEON REQUIEM [Version 1.0.0]\x1b[0m');
+        writeToTerminal('writeln', 'Connecting to neural link...\x1b[5m_\x1b[0m');
+        writeToTerminal('write', '\r\n' + getPrompt());
+        flushPendingWrites();
+      } catch (err) {
+        console.error('[Terminal] xterm initialization failed:', err);
+      }
+    };
+    rafId = requestAnimationFrame(initializeTerminal);
 
     term.onData((data) => {
       if (data === '\r') { // Enter
         const command = commandBuffer.current.trim();
-        term.write('\r\n');
-        if (onInput) {
-          onInput(command);
-        }
+        writeToTerminal('write', '\r\n');
+        onInputRef.current?.(command);
         commandBuffer.current = '';
-        term.write(getPrompt());
+        writeToTerminal('write', getPrompt());
       } else if (data === '\u007f') { // Backspace
         if (commandBuffer.current.length > 0) {
           commandBuffer.current = commandBuffer.current.slice(0, -1);
-          term.write('\b \b');
+          writeToTerminal('write', '\b \b');
         }
       } else {
         commandBuffer.current += data;
-        term.write(data);
+        writeToTerminal('write', data);
       }
     });
 
     const handleResize = () => {
-      fitAddon.fit();
+      try { fitAddon.fit(); } catch { /* ignore */ }
     };
     window.addEventListener('resize', handleResize);
 
     return () => {
+      cancelAnimationFrame(rafId);
+      isReadyRef.current = false;
+      pendingWritesRef.current = [];
       term.dispose();
       window.removeEventListener('resize', handleResize);
     };

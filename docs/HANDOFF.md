@@ -1,7 +1,7 @@
 # Neon Requiem - Project Handoff
 
-**Date:** 2026-05-16
-**Session focus:** Phase 4.3 complete. Mission Instancing, Physical Body Persistence, and Alert Escalation all implemented and tested.
+**Date:** 2026-05-18
+**Session focus:** Phase 4.3 architecture deepening complete. Auth hardening, client connectivity, xterm crash, and socket command hardening applied. Server tested end-to-end.
 
 ---
 
@@ -33,7 +33,19 @@
 - Verified backend result (2026-05-16):
   - `npm run build`: passes.
   - `npm test -- --silent`: passes, **25 suites / 146 tests** (all Phase 4.3 + architecture refactors + Neon District included).
-- Git branch at session end: `feat/phase-4.3` (16 commits ahead of main; not yet merged).
+- Verified backend result (2026-05-18):
+  - `npm run build`: passes.
+  - `npm test -- --silent`: passes, **25 suites / 146 tests**.
+- Verified frontend/backend result (2026-05-18 debugging pass):
+  - `cd client; npm exec -- tsc -b`: passes.
+  - `cd client; npm run build`: passes.
+  - `npm run build`: passes.
+  - `npm test -- --silent`: passes, **25 suites / 146 tests**.
+  - Socket repro: `select_character` + `look` remains connected; malformed command now emits `Command failed unexpectedly.` without disconnecting.
+- Database reset (2026-05-18 debugging pass):
+  - Requested account wipe completed against configured Postgres DB.
+  - Final verified counts: `accounts = 0`, `characters = 0`.
+- Git branch at session end: `feat/phase-4.3` (not yet merged to main).
 
 ---
 
@@ -173,6 +185,34 @@ The project has moved from a shallow procedural model to a **Deep Module** archi
    - 2 new tests for `wireNodeToMissionTargets`.
    - 25 suites / 142 tests green.
 
+14. **Hardening + Client Debugging Pass (2026-05-18):**
+
+   **Auth middleware — JWT error → 401:**
+   - `src/domains/auth/auth.middleware.ts`: `extractAuthPayload` now wraps `verifyToken()` in try/catch and re-throws as `UnauthorizedError`.
+   - Previously, `TokenExpiredError` / `JsonWebTokenError` (jsonwebtoken library, not `AppError` subclasses) escaped the catch block and Fastify returned 500. Now returns clean 401.
+
+   **xterm terminal crash / hard disconnect on input:**
+   - `client/src/components/Terminal.tsx`: queues all imperative writes until xterm has completed a non-zero-size `fit()`.
+   - Initialization now retries via `requestAnimationFrame` until the flex container has real dimensions, then flushes queued writes.
+   - `onData` now calls the latest `onInput` through a ref; previously the terminal kept the first render's stale callback, which could miss the connected socket state.
+   - All xterm writes are wrapped so renderer failures are logged instead of crashing the React tree and unmounting the socket.
+   - Cleanup cancels the pending frame, clears queued writes, and marks the terminal not ready.
+
+   **Client API/socket base URL:**
+   - Added `client/src/lib/api.ts` with shared `API_BASE_URL` / `apiUrl()`.
+   - `useAuth`, `useSocket`, and `CharacterView` now use the same base URL.
+   - Removed stale hardcoded WSL gateway `172.19.176.1`; this was a concrete cause of "characters disappeared" during testing because the live WSL address had changed to `172.19.181.59`.
+
+   **Socket command guard:**
+   - `src/server.ts`: socket `command` listener now wraps `commandDispatcher.dispatch()` in an outer try/catch.
+   - Unexpected command failures emit `Command failed unexpectedly.` and keep the socket connected.
+   - Repro confirmed normal `look` input and malformed command input both leave the socket connected.
+
+   **WSL2 → Windows Postgres connectivity (env note, not a code change):**
+   - `127.0.0.1` does not reach Windows Postgres from WSL2. Windows host IP is `$(ip route show default | awk '{print $3}')`.
+   - Required: Windows Firewall inbound rule on the Postgres port; `pg_hba.conf` entry `host all all 172.16.0.0/12 scram-sha-256`; then `SELECT pg_reload_conf()`.
+   - `.env` `DATABASE_URL` must use the Windows host IP, not `localhost`.
+
 12. **Phase 4.3 — Mission Instancing, Physical Body Persistence & Alert Escalation (COMPLETE, 2026-05-16):**
    - Branch: `feat/phase-4.3` (15 commits; not yet merged to main)
    - Spec: `docs/superpowers/specs/2026-05-13-phase-4.3-instancing-body-persistence-design.md`
@@ -198,17 +238,18 @@ The project has moved from a shallow procedural model to a **Deep Module** archi
 
 1. **Merge `feat/phase-4.3` to main** — all tests green, build clean; ready to merge.
 2. All four architecture candidates from `/improve-codebase-architecture` are complete.
-3. **Neon District live test** — run `npx prisma db seed` and walk a character from shadow-hub → shadow-gang-turf → neon-bazaar → shops to verify the world area end-to-end.
+3. **Neon District live test** — server is up and character creation works; still need to walk shadow-hub → shadow-gang-turf → neon-bazaar → shops end-to-end in-game.
 4. **Elite mob spawn logic** — `MobTemplate.eliteOnly`/`corporationId` fields exist; spawn-at-RED trigger in `InstanceCleanupSystem` or a new `EliteSpawnSystem` is the next concrete task.
-4. **Safe-zone mob AI enforcement** — `Room.isSafeZone` / `safeZoneOverrideActive` fields exist; mob AI should read `effectiveSafeZone = isSafeZone && !safeZoneOverrideActive` before targeting.
-5. **Mob aggro/follow system** — room-to-room chase; safe-zone boundary enforcement; separate phase.
-6. **Body-guarding mechanic** — tank actively shields a jacked-in decker's physical body; separate phase.
-7. **Hotkey picker UI** — `CommandRegistry.getAll()` is ready; frontend component needed to let players configure hotkeys via dropdowns (accessibility requirement: full playability without typing).
+5. **Safe-zone mob AI enforcement** — `Room.isSafeZone` / `safeZoneOverrideActive` fields exist; mob AI should read `effectiveSafeZone = isSafeZone && !safeZoneOverrideActive` before targeting.
+6. **Mob aggro/follow system** — room-to-room chase; safe-zone boundary enforcement; separate phase.
+7. **Body-guarding mechanic** — tank actively shields a jacked-in decker's physical body; separate phase.
+8. **Hotkey picker UI** — `CommandRegistry.getAll()` is ready; frontend component needed to let players configure hotkeys via dropdowns (accessibility requirement: full playability without typing).
 
 **Remaining carry-forward items:**
 - Snapshot history/admin tooling — no admin-facing snapshot history view yet
 - Frontend lint debt in `client/src` (explicit `any`, React hook rules, static components declared during render)
 - `WorldEventService` — `safeZoneOverrideActive` flag is wired at the DB level; a service to flip it during events is not yet implemented
+- Browser live test after fresh account creation — socket-level repro is green, but a real browser pass through register → create character → type commands should still be performed.
 
 
 ---
@@ -232,6 +273,9 @@ We have identified the path forward for high-scale performance:
 ## 7. Local Run Notes
 Backend: `npm start`
 Frontend: `cd client; npm run dev`
+Client API target:
+- Default frontend API/socket base is `http://localhost:3000`.
+- Override with `VITE_API_BASE_URL=<backend-origin>` when testing from Windows browser against a WSL-hosted backend.
 Verification:
 - Backend: `npm run build`; `npm test -- --silent`
 - Frontend typecheck: `cd client; npm exec -- tsc -b`

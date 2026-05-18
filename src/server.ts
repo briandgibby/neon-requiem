@@ -234,7 +234,12 @@ async function bootstrap() {
     });
 
     socket.on('command', async (data: { text: string }) => {
-      await commandDispatcher.dispatch(socket, data.text);
+      try {
+        await commandDispatcher.dispatch(socket, data.text);
+      } catch (err) {
+        app.log.error({ err }, 'Unhandled socket command failure');
+        socket.emit('message', { text: 'Command failed unexpectedly.', type: 'error' });
+      }
     });
   });
 

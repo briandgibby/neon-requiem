@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { apiUrl } from '../lib/api';
 
 interface User {
   id: string;
@@ -19,7 +20,7 @@ export const useAuth = () => {
   }, []);
 
   const login = async (username: string, password: string) => {
-    const response = await fetch('http://localhost:3000/auth/login', {
+    const response = await fetch(apiUrl('/auth/login'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username, password }),
@@ -40,7 +41,7 @@ export const useAuth = () => {
   };
 
   const register = async (username: string, email: string, password: string) => {
-    const response = await fetch('http://localhost:3000/auth/register', {
+    const response = await fetch(apiUrl('/auth/register'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username, email, password }),

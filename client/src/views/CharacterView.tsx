@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { UserPlus, LogOut, ChevronRight, ChevronLeft, Shield, Zap, Target, Brain, Heart, Star } from 'lucide-react';
+import { apiUrl } from '../lib/api';
 
 interface Character {
   id: string;
@@ -150,7 +151,7 @@ export const CharacterView: React.FC<CharacterViewProps> = ({ token, onSelect, o
 
   const fetchCharacters = async () => {
     try {
-      const response = await fetch('http://localhost:3000/characters', {
+      const response = await fetch(apiUrl('/characters'), {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!response.ok) throw new Error('Failed to load characters');
@@ -197,7 +198,7 @@ export const CharacterView: React.FC<CharacterViewProps> = ({ token, onSelect, o
         payload.mentorSpirit = formData.mentorSpirit;
       }
 
-      const response = await fetch('http://localhost:3000/characters', {
+      const response = await fetch(apiUrl('/characters'), {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
