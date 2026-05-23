@@ -1,7 +1,7 @@
 # Neon Requiem - Project Handoff
 
-**Date:** 2026-05-18
-**Session focus:** Phase 4.3 architecture deepening complete. Auth hardening, client connectivity, xterm crash, and socket command hardening applied. Server tested end-to-end.
+**Date:** 2026-05-23
+**Session focus:** Phase 4.3 merged to `main`; Phase 4.4A safe-zone enforcement planned.
 
 ---
 
@@ -50,7 +50,15 @@
 - Database reset (2026-05-18 debugging pass):
   - Requested account wipe completed against configured Postgres DB.
   - Final verified counts: `accounts = 0`, `characters = 0`.
-- Git branch at session end: `feat/phase-4.3` (not yet merged to main).
+- Phase 4.3 merge status:
+  - `feat/phase-4.3` merged to `main` with merge commit `471fd50`.
+  - `main` pushed to `origin/main`.
+  - Handoff update committed before merge: `cd25a67 docs(handoff): update phase 4.3 handoff`.
+- Verified pre-merge result (2026-05-23):
+  - `npm run build`: passes.
+  - `npm test -- --silent`: passes, **25 suites / 146 tests**.
+  - `cd client; npm exec -- tsc -b`: passes.
+  - `cd client; npm run build`: passes with Vite chunk-size/plugin-timing warnings only.
 
 ---
 
@@ -219,7 +227,7 @@ The project has moved from a shallow procedural model to a **Deep Module** archi
    - `.env` `DATABASE_URL` must use the Windows host IP, not `localhost`.
 
 12. **Phase 4.3 — Mission Instancing, Physical Body Persistence & Alert Escalation (COMPLETE, 2026-05-16):**
-   - Branch: `feat/phase-4.3` (15 commits; not yet merged to main)
+   - Branch: `feat/phase-4.3` (merged to `main`, 2026-05-23)
    - Spec: `docs/superpowers/specs/2026-05-13-phase-4.3-instancing-body-persistence-design.md`
    - Plan: `docs/superpowers/plans/2026-05-13-phase-4.3-implementation.md`
    - All 12 tasks delivered; 24 suites / 132 tests green.
@@ -235,19 +243,46 @@ The project has moved from a shallow procedural model to a **Deep Module** archi
      - Safe-zone fields (`isSafeZone`, `safeZoneOverrideActive`) on `Room`
    - **Follow-on phases (not this slice):** mob aggro/follow system; body-guarding mechanic; elite mob spawn logic at RED alert; safe-zone enforcement in mob AI
 
+15. **Phase 4.4A — Safe-Zone Enforcement Foundation (PLANNED, 2026-05-23):**
+   - Plan: `docs/superpowers/plans/2026-05-23-phase-4.4a-safe-zone-enforcement.md`
+   - Metadata convention added to the plan doc for graph/search friendliness: phase, status, dependencies, enabled future work, domains, and systems.
+   - Scope decision:
+     - Block automated hostile NPC behavior in normal safe zones.
+     - Do **not** change player-initiated combat, PvP rules, rewards, event recruitment, faction allegiance, elite spawns, or full aggro/follow behavior in this slice.
+   - Canonical policy:
+     - `effectiveSafeZone = room.isSafeZone && !room.safeZoneOverrideActive`
+     - The policy belongs in the World domain because it governs zone-specific behavior flags.
+   - Enforcement decisions:
+     - Add a world-domain helper/service lookup so callers do not duplicate flag logic.
+     - Gate automated alarm triggering so effective safe zones do not create/mutate combat sessions into RED escalation.
+     - Gate reinforcement spawning as a second check, so stale sessions or event flag changes cannot spawn hostile mobs after protection resumes.
+     - Blocked automated alarms should be clean no-ops with explicit results and should not mark rooms clean.
+   - Deferred event behavior:
+     - Future hostile safe-zone events may set `safeZoneOverrideActive = true` for affected rooms.
+     - Event-specific logic may enable alarm-like behavior, but civic-defense events should be able to spawn friendly/allied security NPCs who fight alongside recruited players rather than hostile law/security mobs.
+     - Event lifecycle, faction allegiance, friendly NPC support, recruitment, participation rewards, and cleanup guarantees are deferred to later event-system phases.
+
 ---
 
 ## 4. Immediate Next Steps (Phase 4.4+)
 
-**Merge and continue**
+**Implement Phase 4.4A**
 
-1. **Merge `feat/phase-4.3` to main** — all tests green, build clean; ready to merge.
-2. All four architecture candidates from `/improve-codebase-architecture` are complete.
-3. **Safe-zone mob AI enforcement** — `Room.isSafeZone` / `safeZoneOverrideActive` fields exist; mob AI should read `effectiveSafeZone = isSafeZone && !safeZoneOverrideActive` before targeting. Recommended next implementation slice because it is small and foundational for aggro/follow.
-4. **Elite mob spawn logic** — `MobTemplate.eliteOnly`/`corporationId` fields exist; spawn-at-RED trigger in `InstanceCleanupSystem` or a new `EliteSpawnSystem` is the next concrete task.
-5. **Mob aggro/follow system** — room-to-room chase; safe-zone boundary enforcement; separate phase.
-6. **Body-guarding mechanic** — tank actively shields a jacked-in decker's physical body; separate phase.
-7. **Hotkey picker UI** — `CommandRegistry.getAll()` is ready; frontend component needed to let players configure hotkeys via dropdowns (accessibility requirement: full playability without typing).
+1. Commit the new Phase 4.4A plan doc and this handoff update.
+2. Add world-domain safe-zone policy helper and service lookup:
+   - pure helper for known `RoomRecord`
+   - `WorldService.isEffectiveSafeZone(roomId)` for systems with only a room id
+3. Update `CombatService.triggerSecurityAlarm(roomId)` to return an explicit trigger result and no-op in effective safe zones.
+4. Update `SecurityPatrol` tests/behavior so dirty effective safe-zone rooms are skipped without combat-state mutation.
+5. Inject the world-domain policy into `CombatReinforcementSystem` and block hostile reinforcement spawns in effective safe zones.
+6. Run backend verification:
+   - `npm run build`
+   - `npm test -- --silent`
+7. Follow-on after 4.4A:
+   - Elite mob spawn logic at RED alert
+   - Mob aggro/follow system with safe-zone boundary enforcement
+   - Body-guarding mechanic for jacked-in deckers
+   - Hotkey picker UI from `CommandRegistry.getAll()`
 
 **Remaining carry-forward items:**
 - Snapshot history/admin tooling — no admin-facing snapshot history view yet
