@@ -1,7 +1,7 @@
 # Neon Requiem - Project Handoff
 
-**Date:** 2026-05-09
-**Session focus:** Diagnosis pass over recent ECS lifecycle, Matrix, Mission, SocketHub, frontend Matrix changes, and Phase 4.2 setup.
+**Date:** 2026-05-18
+**Session focus:** Phase 4.3 architecture deepening complete. Auth hardening, client connectivity, xterm crash, and socket command hardening applied. Server tested end-to-end.
 
 ---
 
@@ -14,9 +14,9 @@
   npm run build
   npm test -- --silent
   ```
-- Verified backend result after diagnosis:
+- Verified backend result (2026-05-13):
   - `npm run build`: passes.
-  - `npm test -- --silent`: passes, 20 suites / 91 tests.
+  - `npm test -- --silent`: passes, **22 suites / 112 tests** (all Phase 4.2 work included).
 - Frontend verification:
   - `cd client; npm exec -- tsc -b`: passes.
   - `cd client; npm run build`: passes under Node `v22.22.2` after reinstalling frontend dependencies with optional native packages.
@@ -30,6 +30,27 @@
   - `Heartbeat`: A subscriber-based timing system replacing the procedural game loop.
   - `PresenceService`: A character-centric presence and movement orchestrator.
   - `PlayerSyncCoordinator`: Transactional ECS-to-DB player snapshot persistence for disconnects and periodic syncs.
+- Verified backend result (2026-05-16):
+  - `npm run build`: passes.
+  - `npm test -- --silent`: passes, **25 suites / 146 tests** (all Phase 4.3 + architecture refactors + Neon District included).
+- Verified backend result (2026-05-18):
+  - `npm run build`: passes.
+  - `npm test -- --silent`: passes, **25 suites / 146 tests**.
+- Verified frontend/backend result (2026-05-18 debugging pass):
+  - `cd client; npm exec -- tsc -b`: passes.
+  - `cd client; npm run build`: passes.
+  - `npm run build`: passes.
+  - `npm test -- --silent`: passes, **25 suites / 146 tests**.
+  - Socket repro: `select_character` + `look` remains connected; malformed command now emits `Command failed unexpectedly.` without disconnecting.
+- Verified browser live test (2026-05-18, user-reported):
+  - Fresh browser flow worked after DB reset and client hardening.
+  - Character creation persisted well enough to enter the game.
+  - `say` and `look` commands worked without hard disconnect.
+  - Neon District traversal succeeded through the small playable area without blockers.
+- Database reset (2026-05-18 debugging pass):
+  - Requested account wipe completed against configured Postgres DB.
+  - Final verified counts: `accounts = 0`, `characters = 0`.
+- Git branch at session end: `feat/phase-4.3` (not yet merged to main).
 
 ---
 
@@ -131,25 +152,107 @@ The project has moved from a shallow procedural model to a **Deep Module** archi
      - `tests/mission/mission.service.test.ts`
    - Frontend cleanup: `GameView` now removes its `matrix_data` socket handler during effect cleanup.
 
-11. **Phase 4.2 Start (2026-05-09):**
-   - Matrix ICE now materializes into ECS when `MatrixService.getOrCreateEcsNode` loads a DB Matrix node.
-   - Matrix node views now expose active ICE with stable DB ids plus ECS entity ids, health, identity, and type data.
-   - `data spike <ice-id>` now accepts a DB ICE id from the node view and resolves it to the live ECS ICE entity in the decker's active node.
-   - Accepted missions now attach `MissionTargetComponent` to spawned ECS NPC targets when generated `spawnData` resolves to a known room and mob template.
-   - Added regression coverage for Matrix ICE spawning/data spike resolution and mission target attachment.
+11. **Phase 4.2 — Matrix/Mission ECS Completion (COMPLETE, 2026-05-12, merged to main):**
+   - Matrix ICE materializes into ECS when `MatrixService.getOrCreateEcsNode` loads a DB Matrix node.
+   - `data spike <ice-id>` resolves DB ICE ids to live ECS entities; ICE HP flushed to DB after every spike.
+   - `performHacking` flushes alert level to DB, increments `breachProgress` on the node, and accumulates `overwatchScore` on the decker.
+   - `MatrixTickSystem` injects `MatrixRepository` and flushes alert decay to DB.
+   - `MissionGenerator` produces `nodeTargetData` for MATRIX-type missions.
+   - `MissionRepository.findActiveMissionsByNodeRoom` added for node→mission lookup.
+   - `MissionService.acceptMission` resolves node target room slugs to DB room IDs.
+   - `MatrixService` accepts an `onNodeCreated` callback; server wires it to attach `MissionTargetComponent` to newly created ECS node entities.
+   - `MissionSystem` HACK detection replaced: uses `breachProgress >= hackThreshold` instead of `alertLevel === RED`.
+   - All 9 tasks committed; 22 suites / 112 tests green.
+   - **Pending commit:** `tests/mission/mission.service.test.ts` has an uncommitted `MissionRepository.findActiveMissionsByNodeRoom` test block — commit this before starting Phase 4.3.
+
+13. **Architecture Deepening Pass (2026-05-16):** Three candidates implemented from `/improve-codebase-architecture` session.
+
+   **Candidate 1 — CommandRegistry seam:**
+   - Replaced the monolithic `CommandDispatcher` if/else chain with a `CommandRegistry` + `CommandHandler` seam.
+   - `CommandDispatcher` is now a thin 5-step router: parse → look up → resolve client → mode guard → execute (110 lines, down from 235).
+   - Each command is its own class in `src/engine/commands/` with constructor-injected deps, `aliases`, `mode`, `label`, `description`, and `usage` metadata.
+   - **Four execution modes enforced by the dispatcher:** `physical`, `matrix`, `wireless`, `any`.
+   - Wireless class whitelist (`decker`, `technomancer`, `rigger`) checked via `CharacterClassComponent` — zero DB overhead.
+   - `CommandRegistry.getAll()` enables the hotkey picker UI (accessibility: full play without typing).
+   - `HelpHandler` renders dynamically from the registry.
+
+   **Candidate 2 — PlayerEntityFactory:**
+   - Extracted `PlayerEntityFactory.createFromRecord()` to eliminate duplicated 10-component ECS entity construction in `CombatService.joinCombat` and `MatrixService.jackIn`.
+   - Factory owns canonical 9 base components; callers add context-specific components (Ap, CombatStatus, Decker) post-factory.
+   - `CharacterClassComponent` now always present on player entities per Flavor Over Errors design decision.
+   - `docs/CONTEXT.md` created with canonical domain vocabulary.
+
+   **Candidate 3 — MissionService cross-domain boundary:**
+   - `MissionService` previously called `matrixRepo.createMatrixNode()` directly (cross-domain DB call).
+   - Fixed: `MatrixService.createInstanceNode()` wraps the repo call; `MissionService` now depends on `MatrixService` (same domain tier).
+   - Inline 12-line `onNodeCreated` callback in `server.ts` moved into `MissionService.wireNodeToMissionTargets(roomId, nodeEntityId)`.
+   - `server.ts` callback reduced to a one-liner; `ComponentTypes`/`MissionTargetComponent` imports removed from `server.ts`.
+   - 2 new tests for `wireNodeToMissionTargets`.
+   - 25 suites / 142 tests green.
+
+14. **Hardening + Client Debugging Pass (2026-05-18):**
+
+   **Auth middleware — JWT error → 401:**
+   - `src/domains/auth/auth.middleware.ts`: `extractAuthPayload` now wraps `verifyToken()` in try/catch and re-throws as `UnauthorizedError`.
+   - Previously, `TokenExpiredError` / `JsonWebTokenError` (jsonwebtoken library, not `AppError` subclasses) escaped the catch block and Fastify returned 500. Now returns clean 401.
+
+   **xterm terminal crash / hard disconnect on input:**
+   - `client/src/components/Terminal.tsx`: queues all imperative writes until xterm has completed a non-zero-size `fit()`.
+   - Initialization now retries via `requestAnimationFrame` until the flex container has real dimensions, then flushes queued writes.
+   - `onData` now calls the latest `onInput` through a ref; previously the terminal kept the first render's stale callback, which could miss the connected socket state.
+   - All xterm writes are wrapped so renderer failures are logged instead of crashing the React tree and unmounting the socket.
+   - Cleanup cancels the pending frame, clears queued writes, and marks the terminal not ready.
+
+   **Client API/socket base URL:**
+   - Added `client/src/lib/api.ts` with shared `API_BASE_URL` / `apiUrl()`.
+   - `useAuth`, `useSocket`, and `CharacterView` now use the same base URL.
+   - Removed stale hardcoded WSL gateway `172.19.176.1`; this was a concrete cause of "characters disappeared" during testing because the live WSL address had changed to `172.19.181.59`.
+
+   **Socket command guard:**
+   - `src/server.ts`: socket `command` listener now wraps `commandDispatcher.dispatch()` in an outer try/catch.
+   - Unexpected command failures emit `Command failed unexpectedly.` and keep the socket connected.
+   - Repro confirmed normal `look` input and malformed command input both leave the socket connected.
+
+   **WSL2 → Windows Postgres connectivity (env note, not a code change):**
+   - `127.0.0.1` does not reach Windows Postgres from WSL2. Windows host IP is `$(ip route show default | awk '{print $3}')`.
+   - Required: Windows Firewall inbound rule on the Postgres port; `pg_hba.conf` entry `host all all 172.16.0.0/12 scram-sha-256`; then `SELECT pg_reload_conf()`.
+   - `.env` `DATABASE_URL` must use the Windows host IP, not `localhost`.
+
+12. **Phase 4.3 — Mission Instancing, Physical Body Persistence & Alert Escalation (COMPLETE, 2026-05-16):**
+   - Branch: `feat/phase-4.3` (15 commits; not yet merged to main)
+   - Spec: `docs/superpowers/specs/2026-05-13-phase-4.3-instancing-body-persistence-design.md`
+   - Plan: `docs/superpowers/plans/2026-05-13-phase-4.3-implementation.md`
+   - All 12 tasks delivered; 24 suites / 132 tests green.
+   - **What shipped:**
+     - `MissionInstance` DB model; `InstanceRepository` with one-way alert escalation and `rooms: { some: {} }` cleanup guard
+     - `DeckerComponent.physicalRoomId` set at `jackIn`, restored at `jackOut`
+     - `requiresPhysicalPresence: true` on instance `MatrixNode`; `jackIn` enforces physical co-location
+     - Movement blocked in `CommandDispatcher` when entity has `DeckerComponent`
+     - `CommandDispatcher` activates PENDING instances on first room entry
+     - `MatrixTickSystem` syncs alert decay to `MissionInstance`
+     - `InstanceCleanupSystem` (frequency 60) evicts ECS entities and soft-deletes DB records for resolved instances
+     - `eliteOnly`/`corporationId` fields on `MobTemplate` (spawn logic wired as follow-on)
+     - Safe-zone fields (`isSafeZone`, `safeZoneOverrideActive`) on `Room`
+   - **Follow-on phases (not this slice):** mob aggro/follow system; body-guarding mechanic; elite mob spawn logic at RED alert; safe-zone enforcement in mob AI
 
 ---
 
-## 4. Immediate Next Steps (Phase 4.2)
+## 4. Immediate Next Steps (Phase 4.4+)
 
-**Mission and Matrix ECS Completion**
-The diagnosis pass found the lifecycle foundation viable, but two gameplay loops are still only partially connected end to end.
+**Merge and continue**
 
-- **Mission targets:** Accepted missions now attach generated NPC targets to live ECS entities when rooms/templates resolve. Remaining work: expand this beyond NPC assassination targets into Matrix-node objectives and other objective types.
-- **Matrix ICE:** DB-backed Matrix ICE now spawns into ECS and `data spike` accepts stable DB ICE ids. Remaining work: persist ICE HP/alert changes back to the database when ECS state changes should survive cleanup/restart.
-- **Snapshot history/admin tooling:** The transaction log is now safer, but there is still no admin-facing snapshot history view.
-- **Frontend maintenance:** Client typecheck and production build now pass under Node 22. Remaining frontend maintenance is lint debt in `client/src`.
-- **Line ending / diff hygiene:** The working tree has broad pre-existing churn across many files. Normalize review scope before a PR to avoid burying functional changes in whitespace noise.
+1. **Merge `feat/phase-4.3` to main** — all tests green, build clean; ready to merge.
+2. All four architecture candidates from `/improve-codebase-architecture` are complete.
+3. **Safe-zone mob AI enforcement** — `Room.isSafeZone` / `safeZoneOverrideActive` fields exist; mob AI should read `effectiveSafeZone = isSafeZone && !safeZoneOverrideActive` before targeting. Recommended next implementation slice because it is small and foundational for aggro/follow.
+4. **Elite mob spawn logic** — `MobTemplate.eliteOnly`/`corporationId` fields exist; spawn-at-RED trigger in `InstanceCleanupSystem` or a new `EliteSpawnSystem` is the next concrete task.
+5. **Mob aggro/follow system** — room-to-room chase; safe-zone boundary enforcement; separate phase.
+6. **Body-guarding mechanic** — tank actively shields a jacked-in decker's physical body; separate phase.
+7. **Hotkey picker UI** — `CommandRegistry.getAll()` is ready; frontend component needed to let players configure hotkeys via dropdowns (accessibility requirement: full playability without typing).
+
+**Remaining carry-forward items:**
+- Snapshot history/admin tooling — no admin-facing snapshot history view yet
+- Frontend lint debt in `client/src` (explicit `any`, React hook rules, static components declared during render)
+- `WorldEventService` — `safeZoneOverrideActive` flag is wired at the DB level; a service to flip it during events is not yet implemented
 
 
 ---
@@ -173,6 +276,9 @@ We have identified the path forward for high-scale performance:
 ## 7. Local Run Notes
 Backend: `npm start`
 Frontend: `cd client; npm run dev`
+Client API target:
+- Default frontend API/socket base is `http://localhost:3000`.
+- Override with `VITE_API_BASE_URL=<backend-origin>` when testing from Windows browser against a WSL-hosted backend.
 Verification:
 - Backend: `npm run build`; `npm test -- --silent`
 - Frontend typecheck: `cd client; npm exec -- tsc -b`

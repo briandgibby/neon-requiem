@@ -11,7 +11,11 @@ export function extractAuthPayload(auth: AuthVerifier, authHeader: string | unde
     throw new UnauthorizedError('Missing or invalid Authorization header');
   }
 
-  return auth.verifyToken(authHeader.slice(7));
+  try {
+    return auth.verifyToken(authHeader.slice(7));
+  } catch {
+    throw new UnauthorizedError('Invalid or expired token');
+  }
 }
 
 export function getAuthMiddleware(auth: AuthVerifier) {

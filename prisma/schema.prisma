@@ -177,6 +177,10 @@ model Room {
   matrixNode MatrixNode?
   characters Character[]
   combatSession CombatSession?
+  isSafeZone             Boolean @default(false)
+  safeZoneOverrideActive Boolean @default(false)
+  missionInstanceId      String?
+  missionInstance        MissionInstance? @relation(fields: [missionInstanceId], references: [id], onDelete: SetNull)
 
   @@map("rooms")
 }
@@ -229,6 +233,8 @@ model MobTemplate {
 
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
+  eliteOnly     Boolean @default(false)
+  corporationId String?
 
   @@map("mob_templates")
 }
@@ -247,6 +253,7 @@ model MatrixNode {
 
   characters    Character[]
   activeIC      IntCountermeasure[]
+  requiresPhysicalPresence Boolean @default(false)
 
   @@map("matrix_nodes")
 }
@@ -358,6 +365,23 @@ model ActiveMission {
   
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
+  missionInstance  MissionInstance?
 
   @@map("active_missions")
+}
+
+model MissionInstance {
+  id               String    @id @default(cuid())
+  activeMissionId  String    @unique
+  activeMission    ActiveMission @relation(fields: [activeMissionId], references: [id], onDelete: Cascade)
+  status           String    @default("PENDING")   // PENDING, ACTIVE, COMPLETED, ABANDONED
+  alertLevel       String    @default("GREEN")      // GREEN, YELLOW, RED
+  partyLeaderId    String
+  createdAt        DateTime  @default(now())
+  activatedAt      DateTime?
+  resolvedAt       DateTime?
+  lastPartyMemberDepartedAt DateTime?
+  rooms            Room[]
+
+  @@map("mission_instances")
 }

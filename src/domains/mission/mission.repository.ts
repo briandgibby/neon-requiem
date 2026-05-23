@@ -53,4 +53,17 @@ export class MissionRepository {
       data: { currentObjective: objectiveIndex }
     });
   }
+
+  async findActiveMissionsByNodeRoom(roomId: string) {
+    const missions = await this.db.activeMission.findMany({
+      where: { status: 'ACTIVE' },
+    });
+    return missions.filter((m) => {
+      const data = m.targetData as any;
+      return (
+        Array.isArray(data?.nodeTargetData) &&
+        data.nodeTargetData.some((t: any) => t.roomId === roomId)
+      );
+    });
+  }
 }

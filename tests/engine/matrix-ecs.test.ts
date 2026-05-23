@@ -12,14 +12,15 @@ describe('Matrix ECS', () => {
     it('decays YELLOW alert to GREEN sometimes', async () => {
       jest.spyOn(Math, 'random').mockReturnValue(0.05); // Will trigger decay (0.05 < 0.1)
       const registry = new EcsRegistry();
-      const system = new MatrixTickSystem(registry);
+      const system = new MatrixTickSystem(registry, { updateNodeAlert: jest.fn().mockResolvedValue(undefined) } as any);
 
       const nodeId = registry.createEntity();
       registry.addComponent<MatrixNodeComponent>(nodeId, ComponentTypes.MatrixNode, {
         nodeId: 'db-node-1',
         securityLevel: 5,
         alertLevel: 'YELLOW',
-        linkedRoomId: null
+        linkedRoomId: null,
+        breachProgress: 0,
       });
 
       await system.onTick(10);
@@ -33,14 +34,15 @@ describe('Matrix ECS', () => {
     it('does not decay RED alerts', async () => {
       jest.spyOn(Math, 'random').mockReturnValue(0.05);
       const registry = new EcsRegistry();
-      const system = new MatrixTickSystem(registry);
+      const system = new MatrixTickSystem(registry, { updateNodeAlert: jest.fn().mockResolvedValue(undefined) } as any);
 
       const nodeId = registry.createEntity();
       registry.addComponent<MatrixNodeComponent>(nodeId, ComponentTypes.MatrixNode, {
         nodeId: 'db-node-1',
         securityLevel: 5,
         alertLevel: 'RED',
-        linkedRoomId: null
+        linkedRoomId: null,
+        breachProgress: 0,
       });
 
       await system.onTick(10);
@@ -70,13 +72,15 @@ describe('Matrix ECS', () => {
         nodeId: 'db-node-1',
         securityLevel: 5,
         alertLevel: 'GREEN',
-        linkedRoomId: null
+        linkedRoomId: null,
+        breachProgress: 0,
       });
 
       deckerId = registry.createEntity();
       registry.addComponent<DeckerComponent>(deckerId, ComponentTypes.Decker, {
         activeNodeEntityId: nodeId,
-        attack: 5, sleaze: 5, firewall: 5, biofeedbackBuffer: 5
+        physicalRoomId: '',
+        attack: 5, sleaze: 5, firewall: 5, biofeedbackBuffer: 5, overwatchScore: 0,
       });
       registry.addComponent<AttributesComponent>(deckerId, ComponentTypes.Attributes, {
         level: 1, body: 5, agility: 5, dexterity: 5, strength: 5, logic: 5, intuition: 5, willpower: 5, charisma: 5, luck: 5
@@ -148,12 +152,12 @@ describe('Matrix ECS', () => {
 
       const nodeId = registry.createEntity();
       registry.addComponent<MatrixNodeComponent>(nodeId, ComponentTypes.MatrixNode, {
-        nodeId: 'db-node-1', securityLevel: 5, alertLevel: 'RED', linkedRoomId: null
+        nodeId: 'db-node-1', securityLevel: 5, alertLevel: 'RED', linkedRoomId: null, breachProgress: 0,
       });
 
       const deckerId = registry.createEntity();
       registry.addComponent<DeckerComponent>(deckerId, ComponentTypes.Decker, {
-        activeNodeEntityId: nodeId, attack: 1, sleaze: 1, firewall: 1, biofeedbackBuffer: 1
+        activeNodeEntityId: nodeId, physicalRoomId: '', attack: 1, sleaze: 1, firewall: 1, biofeedbackBuffer: 1, overwatchScore: 0,
       });
       registry.addComponent<AttributesComponent>(deckerId, ComponentTypes.Attributes, {
         level: 1, body: 1, agility: 1, dexterity: 1, strength: 1, logic: 1, intuition: 1, willpower: 1, charisma: 1, luck: 1

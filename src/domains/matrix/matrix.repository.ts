@@ -80,4 +80,29 @@ export class MatrixRepository {
       }
     });
   }
+
+  async findRoomById(roomId: string) {
+    return this.db.room.findUnique({ where: { id: roomId } });
+  }
+
+  async createMatrixNode(params: {
+    slug: string;
+    name: string;
+    roomId: string;
+    securityLevel: number;
+    requiresPhysicalPresence: boolean;
+  }) {
+    return this.db.matrixNode.create({
+      data: {
+        slug: params.slug,
+        name: params.name,
+        description: 'Instance corporate host.',
+        roomId: params.roomId,
+        securityLevel: params.securityLevel,
+        hostType: 'corporate',
+        requiresPhysicalPresence: params.requiresPhysicalPresence,
+      },
+      include: { activeIC: true },
+    });
+  }
 }

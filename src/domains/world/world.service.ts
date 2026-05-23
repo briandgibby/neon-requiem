@@ -4,13 +4,13 @@ import { RoomRecord, MovementResult } from './world.types';
 import { Direction } from '../../shared/types';
 import { NotFoundError, ValidationError } from '../../shared/errors';
 import { NavigationUtils } from './navigation';
-import { PresenceService } from '../../engine/presence.service';
+import { RoomPresence } from '../../engine/room-presence';
 
 export class WorldService {
   constructor(
     private readonly worldRepo: WorldRepository,
     private readonly charRepo: CharacterRepository,
-    private readonly presence: PresenceService,
+    private readonly presence: RoomPresence,
   ) {}
 
   async getRoom(slugOrId: string): Promise<RoomRecord> {

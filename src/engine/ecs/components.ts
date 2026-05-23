@@ -19,6 +19,7 @@ export enum ComponentTypes {
   Ice = 'ice',
   Decker = 'decker',
   MissionTarget = 'mission_target',
+  CharacterClass = 'character_class',
 }
 
 export interface IdentityComponent {
@@ -106,6 +107,7 @@ export interface MatrixNodeComponent {
   securityLevel: number;
   alertLevel: 'GREEN' | 'YELLOW' | 'RED';
   linkedRoomId: string | null;
+  breachProgress: number;
 }
 
 export interface IceComponent {
@@ -117,10 +119,12 @@ export interface IceComponent {
 
 export interface DeckerComponent {
   activeNodeEntityId: string;
+  physicalRoomId: string;       // room where the body is anchored during a matrix dive
   attack: number;
   sleaze: number;
   firewall: number;
   biofeedbackBuffer: number;
+  overwatchScore: number;
 }
 
 export interface MissionTargetComponent {
@@ -128,4 +132,9 @@ export interface MissionTargetComponent {
   objectiveIndex: number;
   goalType: 'KILL' | 'HACK' | 'COLLECT' | 'VISIT';
   isCompleted: boolean;
+  hackThreshold?: number;
+}
+
+export interface CharacterClassComponent {
+  className: string;
 }

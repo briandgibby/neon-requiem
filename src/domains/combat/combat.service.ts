@@ -12,20 +12,14 @@ import { NotFoundError, ValidationError } from '../../shared/errors';
 import { Tickable } from '../../engine/heartbeat';
 import { EcsRegistry } from '../../engine/ecs/registry';
 import { MoveDispatcher } from '../../engine/ecs/combat/move-dispatcher';
-import { 
-  ComponentTypes, 
-  CombatSessionComponent, 
-  CombatStatusComponent, 
-  IdentityComponent, 
-  PositionComponent, 
-  HealthComponent, 
-  StunComponent, 
-  ManaComponent, 
-  ApComponent, 
-  AttributesComponent, 
-  SkillsComponent,
+import {
+  ComponentTypes,
+  CombatSessionComponent,
+  CombatStatusComponent,
+  ApComponent,
   PlayerIdComponent,
 } from '../../engine/ecs/components';
+import { PlayerEntityFactory } from '../../engine/ecs/factories/player-entity-factory';
 
 import { PlayerSyncCoordinator } from '../../engine/player-sync-coordinator';
 
@@ -107,67 +101,13 @@ export class CombatService implements Tickable {
       return;
     }
 
-    entityId = this.ecsRegistry.createEntity();
-    
-    this.ecsRegistry.addComponent<PlayerIdComponent>(entityId, ComponentTypes.PlayerId, {
-      characterId,
-      accountId,
-    });
-
-    this.ecsRegistry.addComponent<IdentityComponent>(entityId, ComponentTypes.Identity, {
-      name: character.name,
-      slug: character.name.toLowerCase().replace(/\s+/g, '-'),
-    });
-
-    this.ecsRegistry.addComponent<PositionComponent>(entityId, ComponentTypes.Position, {
-      roomId,
-    });
-
-    const now = Date.now();
-    this.ecsRegistry.addComponent<HealthComponent>(entityId, ComponentTypes.Health, {
-      current: character.currentHp,
-      max: character.maxHp,
-      lastRegenAt: now,
-    });
-
-    this.ecsRegistry.addComponent<StunComponent>(entityId, ComponentTypes.Stun, {
-      current: character.currentStun,
-      max: character.maxStun,
-      lastRegenAt: now,
-    });
-
-    this.ecsRegistry.addComponent<ManaComponent>(entityId, ComponentTypes.Mana, {
-      current: character.currentMana,
-      max: character.maxMana,
-      lastRegenAt: now,
-    });
+    entityId = PlayerEntityFactory.createFromRecord(this.ecsRegistry, character, roomId);
 
     this.ecsRegistry.addComponent<ApComponent>(entityId, ComponentTypes.Ap, {
       current: MAX_AP,
       max: MAX_AP,
-      lastRegenAt: now,
+      lastRegenAt: Date.now(),
       recoveryTicks: 0,
-    });
-
-    this.ecsRegistry.addComponent<AttributesComponent>(entityId, ComponentTypes.Attributes, {
-      level: character.level,
-      body: character.body,
-      agility: character.agility,
-      dexterity: character.dexterity,
-      strength: character.strength,
-      logic: character.logic,
-      intuition: character.intuition,
-      willpower: character.willpower,
-      charisma: character.charisma,
-      luck: character.luck,
-    });
-
-    this.ecsRegistry.addComponent<SkillsComponent>(entityId, ComponentTypes.Skills, {
-      masteryCQC: character.masteryCQC,
-      masteryPistol: character.masteryPistol,
-      masteryRifle: character.masteryRifle,
-      masteryAutomatic: character.masteryAutomatic,
-      armorValue: character.armorValue,
     });
 
     this.ecsRegistry.addComponent<CombatStatusComponent>(entityId, ComponentTypes.CombatStatus, {

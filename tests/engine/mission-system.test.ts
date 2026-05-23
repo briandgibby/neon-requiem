@@ -35,7 +35,7 @@ describe('MissionSystem', () => {
     expect(target?.isCompleted).toBe(true);
   });
 
-  it('triggers callback when a HACK target is breached', async () => {
+  it('marks a HACK objective complete when breachProgress meets hackThreshold', async () => {
     const registry = new EcsRegistry();
     const mockCallback = jest.fn().mockResolvedValue(undefined);
     const system = new MissionSystem(registry, mockCallback);
@@ -45,23 +45,50 @@ describe('MissionSystem', () => {
       missionId: 'mission-2',
       objectiveIndex: 1,
       goalType: 'HACK',
-      isCompleted: false
+      hackThreshold: 3,
+      isCompleted: false,
     });
     registry.addComponent<MatrixNodeComponent>(targetId, ComponentTypes.MatrixNode, {
       nodeId: 'node-1',
       securityLevel: 5,
       alertLevel: 'GREEN',
-      linkedRoomId: null
+      linkedRoomId: null,
+      breachProgress: 2,
     });
 
     await system.onTick(1);
     expect(mockCallback).not.toHaveBeenCalled();
 
-    // Set node to RED alert (breached)
+    // Reach the threshold
     const node = registry.getComponent<MatrixNodeComponent>(targetId, ComponentTypes.MatrixNode);
-    node!.alertLevel = 'RED';
+    node!.breachProgress = 3;
 
     await system.onTick(2);
     expect(mockCallback).toHaveBeenCalledWith('mission-2', 1);
+  });
+
+  it('does NOT complete a HACK objective when breachProgress is below hackThreshold', async () => {
+    const registry = new EcsRegistry();
+    const mockCallback = jest.fn().mockResolvedValue(undefined);
+    const system = new MissionSystem(registry, mockCallback);
+
+    const targetId = registry.createEntity();
+    registry.addComponent<MissionTargetComponent>(targetId, ComponentTypes.MissionTarget, {
+      missionId: 'mission-3',
+      objectiveIndex: 0,
+      goalType: 'HACK',
+      hackThreshold: 5,
+      isCompleted: false,
+    });
+    registry.addComponent<MatrixNodeComponent>(targetId, ComponentTypes.MatrixNode, {
+      nodeId: 'node-2',
+      securityLevel: 3,
+      alertLevel: 'RED',
+      linkedRoomId: 'room-1',
+      breachProgress: 1,
+    });
+
+    await system.onTick(1);
+    expect(mockCallback).not.toHaveBeenCalled();
   });
 });

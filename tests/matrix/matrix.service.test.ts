@@ -188,6 +188,7 @@ describe('MatrixService', () => {
       securityLevel: 4,
       alertLevel: 'GREEN',
       linkedRoomId: 'physical-room-1',
+      breachProgress: 0,
     });
 
     const entityId = registry.createEntity();
@@ -197,10 +198,12 @@ describe('MatrixService', () => {
     });
     registry.addComponent<DeckerComponent>(entityId, ComponentTypes.Decker, {
       activeNodeEntityId: nodeId,
+      physicalRoomId: '',
       attack: 5,
       sleaze: 5,
       firewall: 5,
       biofeedbackBuffer: 5,
+      overwatchScore: 0,
     });
     registry.addComponent<AttributesComponent>(entityId, ComponentTypes.Attributes, {
       level: 1,
@@ -239,5 +242,335 @@ describe('MatrixService', () => {
 
     await expect(service.performHacking('char-1', 'intruder-account', 'brute'))
       .rejects.toThrow(NotFoundError);
+  });
+
+  describe('dataSpike', () => {
+    function buildDataSpikeEnv() {
+      const registry = new EcsRegistry();
+
+      const nodeEntityId = registry.createEntity();
+      registry.addComponent<MatrixNodeComponent>(nodeEntityId, ComponentTypes.MatrixNode, {
+        nodeId: 'node-db-1',
+        securityLevel: 3,
+        alertLevel: 'GREEN',
+        linkedRoomId: 'room-1',
+        breachProgress: 0,
+      });
+
+      const deckerEntityId = registry.createEntity();
+      registry.addComponent<PlayerIdComponent>(deckerEntityId, ComponentTypes.PlayerId, {
+        characterId: 'char-1',
+        accountId: 'account-1',
+      });
+      registry.addComponent<DeckerComponent>(deckerEntityId, ComponentTypes.Decker, {
+        activeNodeEntityId: nodeEntityId,
+        physicalRoomId: '',
+        attack: 6, sleaze: 5, firewall: 4, biofeedbackBuffer: 3, overwatchScore: 0,
+      });
+      registry.addComponent<AttributesComponent>(deckerEntityId, ComponentTypes.Attributes, {
+        level: 1, body: 3, agility: 4, dexterity: 4, strength: 3,
+        logic: 6, intuition: 5, willpower: 4, charisma: 2, luck: 3,
+      });
+      registry.addComponent<ApComponent>(deckerEntityId, ComponentTypes.Ap, {
+        current: 10, max: 10, lastRegenAt: Date.now(), recoveryTicks: 0,
+      });
+      registry.addComponent<CombatStatusComponent>(deckerEntityId, ComponentTypes.CombatStatus, {
+        state: 'engaged', isPetActive: false,
+      });
+
+      const iceEntityId = registry.createEntity();
+      registry.addComponent<IceComponent>(iceEntityId, ComponentTypes.Ice, {
+        iceId: 'ice-db-1', type: 'WHITE', attack: 3, defense: 2,
+      });
+      registry.addComponent<HealthComponent>(iceEntityId, ComponentTypes.Health, {
+        current: 20, max: 20, lastRegenAt: Date.now(),
+      });
+      registry.addComponent<PositionComponent>(iceEntityId, ComponentTypes.Position, {
+        roomId: nodeEntityId,
+      });
+
+      const matrixRepo = {
+        updateIceHp: jest.fn().mockResolvedValue(undefined),
+        updateNodeAlert: jest.fn().mockResolvedValue(undefined),
+        getCharacterWithEquipment: jest.fn(),
+        findNodeByRoomId: jest.fn(),
+        updateCharacterLink: jest.fn(),
+      };
+      const dispatcher = new MoveDispatcher();
+      dispatcher.register(new MatrixDataSpikeExecutor());
+
+      const service = new MatrixService(matrixRepo as any, registry, dispatcher);
+
+      return { service, registry, matrixRepo, deckerEntityId, iceEntityId, nodeEntityId };
+    }
+
+    it('flushes ICE HP to DB after a data spike', async () => {
+      const { service, matrixRepo, iceEntityId, registry } = buildDataSpikeEnv();
+
+      jest.spyOn(Math, 'random').mockReturnValue(0.99);
+      await service.dataSpike('char-1', 'account-1', 'ice-db-1');
+      jest.restoreAllMocks();
+
+      const health = registry.getComponent<HealthComponent>(iceEntityId, ComponentTypes.Health);
+      expect(matrixRepo.updateIceHp).toHaveBeenCalledWith('ice-db-1', health!.current);
+    });
+
+    it('increments overwatchScore on the decker after a data spike', async () => {
+      const { service, registry, deckerEntityId } = buildDataSpikeEnv();
+
+      jest.spyOn(Math, 'random').mockReturnValue(0.99);
+      await service.dataSpike('char-1', 'account-1', 'ice-db-1');
+      jest.restoreAllMocks();
+
+      const decker = registry.getComponent<DeckerComponent>(deckerEntityId, ComponentTypes.Decker);
+      expect(decker!.overwatchScore).toBe(1);
+    });
+  });
+
+  describe('getOrCreateEcsNode — onNodeCreated callback', () => {
+    it('calls onNodeCreated with roomId and the new node entityId', async () => {
+      const registry = new EcsRegistry();
+      const onNodeCreated = jest.fn().mockResolvedValue(undefined);
+
+      const matrixRepo = {
+        findNodeByRoomId: jest.fn().mockResolvedValue({
+          id: 'node-db-1',
+          name: 'Corp Host',
+          slug: 'corp-host',
+          securityLevel: 3,
+          alertLevel: 'GREEN',
+          activeIC: [],
+        }),
+        updateIceHp: jest.fn(),
+        updateNodeAlert: jest.fn(),
+        getCharacterWithEquipment: jest.fn(),
+        updateCharacterLink: jest.fn(),
+      };
+
+      const dispatcher = new MoveDispatcher();
+      const service = new MatrixService(matrixRepo as any, registry, dispatcher, onNodeCreated);
+
+      await service.getOrCreateEcsNode('room-uuid-1');
+
+      expect(onNodeCreated).toHaveBeenCalledWith('room-uuid-1', expect.any(String));
+    });
+
+    it('does NOT call onNodeCreated when the node entity already exists', async () => {
+      const registry = new EcsRegistry();
+      const onNodeCreated = jest.fn().mockResolvedValue(undefined);
+
+      const matrixRepo = {
+        findNodeByRoomId: jest.fn().mockResolvedValue({
+          id: 'node-db-1', name: 'Corp Host', slug: 'corp-host',
+          securityLevel: 3, alertLevel: 'GREEN', activeIC: [],
+        }),
+        updateIceHp: jest.fn(),
+        updateNodeAlert: jest.fn(),
+        getCharacterWithEquipment: jest.fn(),
+        updateCharacterLink: jest.fn(),
+      };
+
+      const dispatcher = new MoveDispatcher();
+      const service = new MatrixService(matrixRepo as any, registry, dispatcher, onNodeCreated);
+
+      await service.getOrCreateEcsNode('room-uuid-1');
+      onNodeCreated.mockClear();
+
+      await service.getOrCreateEcsNode('room-uuid-1');
+
+      expect(onNodeCreated).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('performHacking', () => {
+    function buildHackingEnv(dispatchSuccess: boolean = true) {
+      const registry = new EcsRegistry();
+
+      const nodeEntityId = registry.createEntity();
+      registry.addComponent<MatrixNodeComponent>(nodeEntityId, ComponentTypes.MatrixNode, {
+        nodeId: 'node-db-1',
+        securityLevel: 2,
+        alertLevel: 'GREEN',
+        linkedRoomId: 'room-1',
+        breachProgress: 0,
+      });
+
+      const deckerEntityId = registry.createEntity();
+      registry.addComponent<PlayerIdComponent>(deckerEntityId, ComponentTypes.PlayerId, {
+        characterId: 'char-1', accountId: 'account-1',
+      });
+      registry.addComponent<DeckerComponent>(deckerEntityId, ComponentTypes.Decker, {
+        activeNodeEntityId: nodeEntityId,
+        physicalRoomId: '',
+        attack: 8, sleaze: 5, firewall: 4, biofeedbackBuffer: 3, overwatchScore: 0,
+      });
+
+      const matrixRepo = {
+        updateNodeAlert: jest.fn().mockResolvedValue(undefined),
+        updateIceHp: jest.fn().mockResolvedValue(undefined),
+        getCharacterWithEquipment: jest.fn(),
+        findNodeByRoomId: jest.fn(),
+        updateCharacterLink: jest.fn(),
+      };
+
+      const mockResult = {
+        success: dispatchSuccess,
+        message: dispatchSuccess ? 'Hack succeeded' : 'Resisted',
+        data: { newAlertLevel: 'RED' },
+      };
+      // Simulate the real executor: mutate node.alertLevel in ECS then return the result
+      const dispatcher = {
+        dispatch: jest.fn().mockImplementation(async () => {
+          const node = registry.getComponent<MatrixNodeComponent>(nodeEntityId, ComponentTypes.MatrixNode);
+          if (node) node.alertLevel = 'RED';
+          return mockResult;
+        }),
+      } as any;
+
+      const service = new MatrixService(matrixRepo as any, registry, dispatcher);
+
+      return { service, registry, matrixRepo, deckerEntityId, nodeEntityId };
+    }
+
+    it('flushes alert level to DB after brute/sleaze regardless of success', async () => {
+      const { service, matrixRepo } = buildHackingEnv(true);
+
+      await service.performHacking('char-1', 'account-1', 'brute');
+
+      expect(matrixRepo.updateNodeAlert).toHaveBeenCalledWith('node-db-1', 'RED');
+    });
+
+    it('flushes alert level to DB even when hack fails', async () => {
+      const { service, matrixRepo } = buildHackingEnv(false);
+
+      await service.performHacking('char-1', 'account-1', 'brute');
+
+      expect(matrixRepo.updateNodeAlert).toHaveBeenCalledWith('node-db-1', 'RED');
+    });
+
+    it('increments breachProgress on the node when hack succeeds', async () => {
+      const { service, registry, nodeEntityId } = buildHackingEnv(true);
+
+      await service.performHacking('char-1', 'account-1', 'brute');
+
+      const node = registry.getComponent<MatrixNodeComponent>(nodeEntityId, ComponentTypes.MatrixNode);
+      expect(node!.breachProgress).toBe(1);
+    });
+
+    it('does NOT increment breachProgress when hack fails', async () => {
+      const { service, registry, nodeEntityId } = buildHackingEnv(false);
+
+      await service.performHacking('char-1', 'account-1', 'brute');
+
+      const node = registry.getComponent<MatrixNodeComponent>(nodeEntityId, ComponentTypes.MatrixNode);
+      expect(node!.breachProgress).toBe(0);
+    });
+
+    it('increments overwatchScore on the decker', async () => {
+      const { service, registry, deckerEntityId } = buildHackingEnv(true);
+
+      await service.performHacking('char-1', 'account-1', 'brute');
+
+      const decker = registry.getComponent<DeckerComponent>(deckerEntityId, ComponentTypes.Decker);
+      expect(decker!.overwatchScore).toBe(1);
+    });
+  });
+
+  describe('jackOut — physicalRoomId restoration', () => {
+    it('restores PositionComponent.roomId to physicalRoomId after graceful jack-out', async () => {
+      const registry = new EcsRegistry();
+
+      // Manually set up a jacked-in entity
+      const entityId = registry.createEntity();
+      registry.addComponent<PlayerIdComponent>(entityId, ComponentTypes.PlayerId, {
+        characterId: 'char-1', accountId: 'account-1',
+      });
+      registry.addComponent<PositionComponent>(entityId, ComponentTypes.Position, {
+        roomId: 'node-entity-id', // currently tracking matrix persona location
+      });
+      registry.addComponent<DeckerComponent>(entityId, ComponentTypes.Decker, {
+        activeNodeEntityId: 'node-entity-id',
+        physicalRoomId: 'physical-room-1',
+        attack: 5, sleaze: 4, firewall: 3, biofeedbackBuffer: 2, overwatchScore: 0,
+      });
+
+      const matrixRepo = {
+        getCharacterWithEquipment: jest.fn().mockResolvedValue({
+          id: 'char-1', isJackedIn: true, maxStun: 100, currentStun: 100,
+        }),
+        updateCharacterLink: jest.fn().mockResolvedValue(undefined),
+      };
+
+      const service = new MatrixService(matrixRepo as any, registry, new MoveDispatcher());
+
+      await service.jackOut('char-1', 'account-1');
+
+      const pos = registry.getComponent<PositionComponent>(entityId, ComponentTypes.Position);
+      expect(pos!.roomId).toBe('physical-room-1');
+
+      const decker = registry.getComponent<DeckerComponent>(entityId, ComponentTypes.Decker);
+      expect(decker).toBeUndefined();
+    });
+  });
+
+  describe('jackIn — physicalRoomId and presence validation', () => {
+    function buildJackInEnv(nodeOverrides: any = {}, roomOverride: any = null) {
+      const registry = new EcsRegistry();
+      const matrixRepo = {
+        getCharacterWithEquipment: jest.fn().mockResolvedValue({
+          id: 'char-1',
+          name: 'Fox',
+          isJackedIn: false,
+          className: 'decker',
+          currentHp: 100, maxHp: 100,
+          currentStun: 100, maxStun: 100,
+          level: 1, body: 3, agility: 4, dexterity: 4, strength: 3,
+          logic: 6, intuition: 5, willpower: 4, charisma: 2, luck: 3,
+          inventory: [{ item: { type: 'DECK', stats: { attack: 5, sleaze: 4, firewall: 3, biofeedbackBuffer: 2 } }, isEquipped: true }],
+        }),
+        findNodeByRoomId: jest.fn().mockResolvedValue({
+          id: 'node-db-1', slug: 'corp-host', name: 'Corp Host',
+          securityLevel: 2, alertLevel: 'GREEN', activeIC: [],
+          requiresPhysicalPresence: false,
+          ...nodeOverrides,
+        }),
+        findRoomById: jest.fn().mockResolvedValue(
+          roomOverride ?? { id: 'room-1', missionInstanceId: null }
+        ),
+        updateCharacterLink: jest.fn().mockResolvedValue(undefined),
+      };
+      const dispatcher = new MoveDispatcher();
+      const service = new MatrixService(matrixRepo as any, registry, dispatcher);
+      return { service, registry, matrixRepo };
+    }
+
+    it('sets physicalRoomId on DeckerComponent at jack-in', async () => {
+      const { service, registry } = buildJackInEnv();
+
+      await service.jackIn('char-1', 'account-1', 'room-1');
+
+      const entityId = registry.getEntityByComponent<PlayerIdComponent>(
+        ComponentTypes.PlayerId,
+        (p) => p.characterId === 'char-1'
+      );
+      const decker = registry.getComponent<DeckerComponent>(entityId!, ComponentTypes.Decker);
+      expect(decker!.physicalRoomId).toBe('room-1');
+    });
+
+    it('rejects jack-in when node requiresPhysicalPresence and room is not an instance room', async () => {
+      const { service } = buildJackInEnv({ requiresPhysicalPresence: true });
+
+      await expect(service.jackIn('char-1', 'account-1', 'room-1'))
+        .rejects.toThrow('hardline connection');
+    });
+
+    it('allows jack-in when node requiresPhysicalPresence and room IS an instance room', async () => {
+      const { service } = buildJackInEnv(
+        { requiresPhysicalPresence: true },
+        { id: 'room-1', missionInstanceId: 'inst-1' }
+      );
+
+      await expect(service.jackIn('char-1', 'account-1', 'room-1')).resolves.toBeDefined();
+    });
   });
 });

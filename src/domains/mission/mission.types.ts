@@ -22,8 +22,15 @@ export interface MissionInstanceData {
     npcId: string;
     templateSlug: string;
     roomSlug: string;
+    roomId?: string;       // resolved DB room ID (set for instance rooms)
     isTarget: boolean;
     objectiveIndex?: number;
+  }[];
+  nodeTargetData: {
+    roomSlug: string;
+    roomId?: string;
+    objectiveIndex: number;
+    hackThreshold: number;
   }[];
 }
 

@@ -14,6 +14,8 @@ import { MatrixTickSystem } from './engine/ecs/systems/matrix-tick-system';
 import { IceAiSystem } from './engine/ecs/systems/ice-ai-system';
 import { MissionSystem } from './engine/ecs/systems/mission-system';
 import { EntityCleanupSystem } from './engine/ecs/systems/entity-cleanup-system';
+import { InstanceRepository } from './domains/mission/instance.repository';
+import { InstanceCleanupSystem } from './engine/ecs/systems/instance-cleanup-system';
 import { MoveDispatcher } from './engine/ecs/combat/move-dispatcher';
 import { AttackExecutor } from './engine/ecs/combat/moves/attack-executor';
 import { MatrixBruteExecutor } from './engine/ecs/combat/moves/matrix-brute-executor';
@@ -21,10 +23,22 @@ import { MatrixSleazeExecutor } from './engine/ecs/combat/moves/matrix-sleaze-ex
 import { MatrixDataSpikeExecutor } from './engine/ecs/combat/moves/matrix-data-spike-executor';
 import { SecurityPatrol } from './engine/security-patrol';
 import { RoomPresence } from './engine/room-presence';
-import { PresenceService } from './engine/presence.service';
 import { PlayerSyncCoordinator } from './engine/player-sync-coordinator';
 import { SocketHub } from './engine/socket-hub';
 import { CommandDispatcher } from './engine/command-dispatcher';
+import { CommandRegistry } from './engine/command-registry';
+import { MoveHandler } from './engine/commands/move.handler';
+import { NavigateHandler } from './engine/commands/navigate.handler';
+import { LookHandler } from './engine/commands/look.handler';
+import { WhoHandler } from './engine/commands/who.handler';
+import { SayHandler } from './engine/commands/say.handler';
+import { TellHandler } from './engine/commands/tell.handler';
+import { HelpHandler } from './engine/commands/help.handler';
+import { JackInHandler } from './engine/commands/jackin.handler';
+import { JackOutHandler } from './engine/commands/jackout.handler';
+import { BruteHandler } from './engine/commands/brute.handler';
+import { SleazeHandler } from './engine/commands/sleaze.handler';
+import { DataSpikeHandler } from './engine/commands/spike.handler';
 import { AuthRepository } from './domains/auth/auth.repository';
 import { AuthService } from './domains/auth/auth.service';
 import { registerAuthRoutes } from './domains/auth/auth.routes';
@@ -52,7 +66,7 @@ import { ShopService } from './domains/shop/shop.service';
 import { registerShopRoutes } from './domains/shop/shop.routes';
 import { AuditLogger } from './engine/audit-logger';
 import type { Socket } from 'socket.io';
-import type { AuthPayload, Direction } from './shared/types';
+import type { AuthPayload } from './shared/types';
 import type { JwtSigner } from './domains/auth/auth.types';
 
 function requireEnv(name: string): string {
@@ -96,7 +110,6 @@ async function bootstrap() {
 
   // Shared Engine Services
   const roomPresence = new RoomPresence();
-  const presenceService = new PresenceService(roomPresence);
   const ecsRegistry = new EcsRegistry();
   const syncCoordinator = new PlayerSyncCoordinator(db, ecsRegistry, new AuditLogger(db));
   const heartbeat = new Heartbeat(TICK_RATE_MS);
@@ -117,11 +130,19 @@ async function bootstrap() {
   const charService = new CharacterService(charRepo, worldRepo);
   registerCharacterRoutes(app, charService, authService);
 
-  const worldService = new WorldService(worldRepo, charRepo, presenceService);
+  const worldService = new WorldService(worldRepo, charRepo, roomPresence);
   registerWorldRoutes(app, worldService, authService);
 
   const matrixRepo = new MatrixRepository(db);
-  const matrixService = new MatrixService(matrixRepo, ecsRegistry, moveDispatcher);
+  const missionRepo = new MissionRepository(db);
+  const instanceRepo = new InstanceRepository(db);
+  let missionService!: MissionService;
+  const matrixService = new MatrixService(
+    matrixRepo,
+    ecsRegistry,
+    moveDispatcher,
+    async (roomId, nodeEntityId) => missionService.wireNodeToMissionTargets(roomId, nodeEntityId),
+  );
   registerMatrixRoutes(app, matrixService, authService);
 
   const magicRepo = new MagicRepository(db);
@@ -143,9 +164,10 @@ async function bootstrap() {
   registerCombatRoutes(app, combatService, authService);
 
   const auditLogger = new AuditLogger(db);
-  const missionRepo = new MissionRepository(db);
   const missionGen = new MissionGenerator();
-  const missionService = new MissionService(auditLogger, missionRepo, charRepo, worldRepo, missionGen, ecsRegistry, mobRepo);
+  missionService = new MissionService(
+    auditLogger, missionRepo, charRepo, worldRepo, missionGen, ecsRegistry, mobRepo, instanceRepo, matrixService
+  );
   registerMissionRoutes(app, missionService, authService);
 
   const shopRepo = new ShopRepository(db);
@@ -158,13 +180,29 @@ async function bootstrap() {
   heartbeat.subscribe(new RegenSystem(ecsRegistry));
   heartbeat.subscribe(new CombatTickSystem(ecsRegistry));
   heartbeat.subscribe(new CombatReinforcementSystem(ecsRegistry, mobRepo));
-  heartbeat.subscribe(new MatrixTickSystem(ecsRegistry));
+  heartbeat.subscribe(new MatrixTickSystem(ecsRegistry, matrixRepo, instanceRepo));
   heartbeat.subscribe(new IceAiSystem(ecsRegistry));
   heartbeat.subscribe(new MissionSystem(ecsRegistry, (missionId, index) => missionService.updateObjectiveProgress(missionId, index)));
   heartbeat.subscribe(new EntityCleanupSystem(ecsRegistry));
+  heartbeat.subscribe(new InstanceCleanupSystem(ecsRegistry, instanceRepo));
 
-  const socketHub = new SocketHub(app.server, authService, presenceService, syncCoordinator);
-  const commandDispatcher = new CommandDispatcher(worldService, socketHub, matrixService);
+  const socketHub = new SocketHub(app.server, authService, roomPresence, syncCoordinator);
+
+  const commandRegistry = new CommandRegistry();
+  commandRegistry.register(new MoveHandler(worldService, socketHub, instanceRepo));
+  commandRegistry.register(new NavigateHandler(worldService, socketHub, instanceRepo));
+  commandRegistry.register(new LookHandler(worldService, matrixService, socketHub));
+  commandRegistry.register(new WhoHandler(socketHub));
+  commandRegistry.register(new SayHandler(socketHub));
+  commandRegistry.register(new TellHandler(socketHub));
+  commandRegistry.register(new JackInHandler(matrixService));
+  commandRegistry.register(new JackOutHandler(matrixService));
+  commandRegistry.register(new BruteHandler(matrixService));
+  commandRegistry.register(new SleazeHandler(matrixService));
+  commandRegistry.register(new DataSpikeHandler(matrixService));
+  commandRegistry.register(new HelpHandler(commandRegistry));
+
+  const commandDispatcher = new CommandDispatcher(commandRegistry, socketHub, ecsRegistry);
 
   socketHub.onConnection(async (socket) => {
     const accountId = socket.data.accountId;
@@ -196,7 +234,12 @@ async function bootstrap() {
     });
 
     socket.on('command', async (data: { text: string }) => {
-      await commandDispatcher.dispatch(socket, data.text);
+      try {
+        await commandDispatcher.dispatch(socket, data.text);
+      } catch (err) {
+        app.log.error({ err }, 'Unhandled socket command failure');
+        socket.emit('message', { text: 'Command failed unexpectedly.', type: 'error' });
+      }
     });
   });
 

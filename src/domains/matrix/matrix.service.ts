@@ -3,21 +3,22 @@ import { NotFoundError, ValidationError } from '../../shared/errors';
 import { MatrixHackingResult, DataSpikeResult, IceAttackResult, AlertLevel, RepairResult } from './matrix.types';
 import { EcsRegistry } from '../../engine/ecs/registry';
 import { MoveDispatcher } from '../../engine/ecs/combat/move-dispatcher';
-import { 
-  ComponentTypes, 
-  MatrixNodeComponent, 
-  DeckerComponent, 
-  IdentityComponent, 
+import {
+  ComponentTypes,
+  MatrixNodeComponent,
+  DeckerComponent,
+  IdentityComponent,
   PlayerIdComponent,
   HealthComponent,
   IceComponent,
-  StunComponent,
   ApComponent,
-  AttributesComponent,
   CombatStatusComponent,
-  PositionComponent
+  PositionComponent,
 } from '../../engine/ecs/components';
+import { PlayerEntityFactory } from '../../engine/ecs/factories/player-entity-factory';
 import { MAX_AP } from '../../shared/constants';
+
+type NodeCreatedCallback = (roomId: string, nodeEntityId: string) => Promise<void>;
 
 interface MatrixNodeView {
   id: string;
@@ -42,8 +43,19 @@ export class MatrixService {
   constructor(
     private readonly matrixRepo: MatrixRepository,
     private readonly ecsRegistry: EcsRegistry,
-    private readonly moveDispatcher: MoveDispatcher
+    private readonly moveDispatcher: MoveDispatcher,
+    private readonly onNodeCreated?: NodeCreatedCallback,
   ) {}
+
+  async createInstanceNode(params: {
+    slug: string;
+    name: string;
+    roomId: string;
+    securityLevel: number;
+    requiresPhysicalPresence: boolean;
+  }): Promise<void> {
+    await this.matrixRepo.createMatrixNode(params);
+  }
 
   private getEcsNodeView(nodeEntityId: string): MatrixNodeView | null {
     const node = this.ecsRegistry.getComponent<MatrixNodeComponent>(nodeEntityId, ComponentTypes.MatrixNode);
@@ -193,6 +205,7 @@ export class MatrixService {
         securityLevel: nodeData.securityLevel,
         alertLevel: nodeData.alertLevel as AlertLevel,
         linkedRoomId: roomId,
+        breachProgress: 0,
       });
       
       this.ecsRegistry.addComponent<IdentityComponent>(nodeEntityId, ComponentTypes.Identity, {
@@ -201,6 +214,14 @@ export class MatrixService {
       });
 
       this.spawnIceForNode(nodeEntityId, nodeData.activeIC);
+
+      if (this.onNodeCreated) {
+        try {
+          await this.onNodeCreated(roomId, nodeEntityId);
+        } catch (_err) {
+          // Non-fatal
+        }
+      }
     }
 
     return nodeEntityId;
@@ -219,6 +240,15 @@ export class MatrixService {
       throw new ValidationError('No Cyberdeck equipped and no neural resonance detected');
     }
 
+    // Check physical presence requirement for instance nodes
+    const nodeData = await this.matrixRepo.findNodeByRoomId(roomId);
+    if (nodeData && (nodeData as any).requiresPhysicalPresence) {
+      const room = await this.matrixRepo.findRoomById(roomId);
+      if (!room?.missionInstanceId) {
+        throw new ValidationError('This host requires a hardline connection — you need to be on-site.');
+      }
+    }
+
     const nodeEntityId = await this.getOrCreateEcsNode(roomId);
     const node = this.getEcsNodeView(nodeEntityId);
     if (!node) throw new ValidationError('Active Matrix Node not found');
@@ -232,17 +262,7 @@ export class MatrixService {
     );
 
     if (!entityId) {
-       entityId = this.ecsRegistry.createEntity();
-       this.ecsRegistry.addComponent<PlayerIdComponent>(entityId, ComponentTypes.PlayerId, { characterId, accountId });
-       this.ecsRegistry.addComponent<IdentityComponent>(entityId, ComponentTypes.Identity, { name: character.name, slug: character.name.toLowerCase() });
-       this.ecsRegistry.addComponent<HealthComponent>(entityId, ComponentTypes.Health, { current: character.currentHp, max: character.maxHp, lastRegenAt: Date.now() });
-       this.ecsRegistry.addComponent<StunComponent>(entityId, ComponentTypes.Stun, { current: character.currentStun, max: character.maxStun, lastRegenAt: Date.now() });
-       this.ecsRegistry.addComponent<PositionComponent>(entityId, ComponentTypes.Position, { roomId });
-       this.ecsRegistry.addComponent<AttributesComponent>(entityId, ComponentTypes.Attributes, {
-         level: character.level, body: character.body, agility: character.agility, dexterity: character.dexterity,
-         strength: character.strength, logic: character.logic, intuition: character.intuition,
-         willpower: character.willpower, charisma: character.charisma, luck: character.luck,
-       });
+      entityId = PlayerEntityFactory.createFromRecord(this.ecsRegistry, character, roomId);
     }
 
     let attack = isTechnomancer ? (character.resAttack || 1) : 0;
@@ -260,10 +280,12 @@ export class MatrixService {
 
     this.ecsRegistry.addComponent<DeckerComponent>(entityId, ComponentTypes.Decker, {
       activeNodeEntityId: nodeEntityId,
+      physicalRoomId: roomId,
       attack,
       sleaze,
       firewall,
-      biofeedbackBuffer: buffer
+      biofeedbackBuffer: buffer,
+      overwatchScore: 0,
     });
 
     this.ecsRegistry.addComponent<CombatStatusComponent>(entityId, ComponentTypes.CombatStatus, { state: 'engaged', isPetActive: false });
@@ -283,8 +305,16 @@ export class MatrixService {
 
     const entityId = this.ecsRegistry.getEntityByComponent<PlayerIdComponent>(ComponentTypes.PlayerId, p => p.characterId === characterId);
     if (entityId) {
+      const decker = this.ecsRegistry.getComponent<DeckerComponent>(entityId, ComponentTypes.Decker);
+      const physicalRoomId = decker?.physicalRoomId;
+
       this.ecsRegistry.removeComponent(entityId, ComponentTypes.Decker);
-      // We might destroy the entity if they are not in physical combat, but for now we just remove Decker
+
+      // Restore physical position now that the matrix dive is over
+      if (physicalRoomId) {
+        const pos = this.ecsRegistry.getComponent<PositionComponent>(entityId, ComponentTypes.Position);
+        if (pos) pos.roomId = physicalRoomId;
+      }
     }
 
     if (isEmergency) {
@@ -331,14 +361,31 @@ export class MatrixService {
     const result = await this.moveDispatcher.dispatch(
       type,
       actorId,
-      actorId, // Self-targeted for now since they target the node they are in
+      actorId,
       { registry: this.ecsRegistry }
     );
+
+    // Flush alert and update breach progress
+    const decker = this.ecsRegistry.getComponent<DeckerComponent>(actorId, ComponentTypes.Decker);
+    if (decker) {
+      const node = this.ecsRegistry.getComponent<MatrixNodeComponent>(decker.activeNodeEntityId, ComponentTypes.MatrixNode);
+      if (node) {
+        try {
+          await this.matrixRepo.updateNodeAlert(node.nodeId, node.alertLevel);
+        } catch (_err) {
+          // Non-fatal
+        }
+        if (result.success) {
+          node.breachProgress += 1;
+        }
+      }
+      decker.overwatchScore += 1;
+    }
 
     return {
       success: result.success,
       message: result.message,
-      newAlertLevel: result.data.newAlertLevel
+      newAlertLevel: result.data.newAlertLevel,
     };
   }
 
@@ -358,11 +405,25 @@ export class MatrixService {
       { registry: this.ecsRegistry }
     );
 
+    // Flush ICE HP to DB
+    const targetIce = this.ecsRegistry.getComponent<IceComponent>(targetId, ComponentTypes.Ice);
+    const targetHealth = this.ecsRegistry.getComponent<HealthComponent>(targetId, ComponentTypes.Health);
+    if (targetIce?.iceId && targetHealth) {
+      try {
+        await this.matrixRepo.updateIceHp(targetIce.iceId, targetHealth.current);
+      } catch (_err) {
+        // Non-fatal
+      }
+    }
+
+    // Increment OS stub
+    decker.overwatchScore += 1;
+
     return {
       success: result.success,
       message: result.message,
       damageDealt: result.data.damageDealt,
-      nodeAlertLevel: result.data.newAlertLevel
+      nodeAlertLevel: result.data.newAlertLevel,
     };
   }
 

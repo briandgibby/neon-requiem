@@ -10,6 +10,7 @@ export class MissionGenerator {
     const layout: string[] = [];
     const objectives: MissionObjective[] = [];
     const spawnData: any[] = [];
+    const nodeTargetData: MissionInstanceData['nodeTargetData'] = [];
 
     // 1. Determine Zone/Difficulty
     const difficulty = template.baseDifficulty;
@@ -60,6 +61,22 @@ export class MissionGenerator {
       });
     }
 
+    if (template.type === 'MATRIX') {
+      const targetRoom = rng.pick(layout);
+      objectives.push({
+        type: 'HACK_NODE',
+        description: `Breach the corporate host in ${targetRoom}`,
+        isMandatory: true,
+        isCompleted: false,
+        targetRoomSlug: targetRoom,
+      });
+      nodeTargetData.push({
+        roomSlug: targetRoom,
+        objectiveIndex: objectives.length - 1,
+        hackThreshold: 2 + difficulty,
+      });
+    }
+
     // 4. Handle Party Composition (Dynamic Pathing)
     const hasDecker = partyComposition.includes('decker') || partyComposition.includes('technomancer');
     if (!hasDecker && template.type === 'MATRIX') {
@@ -78,7 +95,8 @@ export class MissionGenerator {
     return {
       layout,
       objectives,
-      spawnData
+      spawnData,
+      nodeTargetData,
     };
   }
 

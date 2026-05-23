@@ -2,8 +2,7 @@ import { Server as SocketServer, Socket } from 'socket.io';
 import { Server as HttpServer } from 'http';
 import { AuthService } from '../domains/auth/auth.service';
 import { UnauthorizedError } from '../shared/errors';
-import { PresenceClient, RoomOccupant } from './room-presence';
-import { PresenceService } from './presence.service';
+import { RoomPresence, PresenceClient, RoomOccupant } from './room-presence';
 import { PlayerSyncCoordinator } from './player-sync-coordinator';
 
 export interface ConnectedClient {
@@ -25,7 +24,7 @@ export class SocketHub {
   constructor(
     httpServer: HttpServer,
     private readonly authService: AuthService,
-    private readonly presence: PresenceService,
+    private readonly presence: RoomPresence,
     private readonly syncCoordinator: PlayerSyncCoordinator
   ) {
     this.io = new SocketServer(httpServer, {

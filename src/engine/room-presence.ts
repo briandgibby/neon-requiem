@@ -1,11 +1,4 @@
-export interface SelectCharacterPresenceInput {
-  socketId: string;
-  accountId: string;
-  username: string;
-  characterId: string;
-  characterName: string;
-  roomId: string;
-}
+import { EventEmitter } from 'events';
 
 export interface RoomOccupant {
   characterId: string;
@@ -32,19 +25,24 @@ export interface PresenceClient {
   roomId: string;
 }
 
-export class RoomPresence {
+export class RoomPresence extends EventEmitter {
   private readonly clientsBySocket = new Map<string, PresenceClient>();
   private readonly socketIdByAccount = new Map<string, string>();
   private readonly socketIdByCharacter = new Map<string, string>();
 
-  selectCharacter(input: SelectCharacterPresenceInput): PresenceLeaveResult | null {
-    const replaced = this.removeAccount(input.accountId);
+  constructor() {
+    super();
+  }
 
-    this.clientsBySocket.set(input.socketId, { ...input });
-    this.socketIdByAccount.set(input.accountId, input.socketId);
-    this.socketIdByCharacter.set(input.characterId, input.socketId);
+  setCharacter(client: PresenceClient): void {
+    const replaced = this.removeAccount(client.accountId);
 
-    return replaced;
+    this.clientsBySocket.set(client.socketId, { ...client });
+    this.socketIdByAccount.set(client.accountId, client.socketId);
+    this.socketIdByCharacter.set(client.characterId, client.socketId);
+
+    if (replaced) this.emit('character_left', replaced);
+    this.emit('character_joined', client);
   }
 
   moveCharacter(socketId: string, nextRoomId: string): PresenceMoveResult | null {
@@ -54,13 +52,15 @@ export class RoomPresence {
     const previousRoomId = client.roomId;
     client.roomId = nextRoomId;
 
-    return {
+    const move: PresenceMoveResult = {
       characterId: client.characterId,
       characterName: client.characterName,
       previousRoomId,
       nextRoomId,
       socketId,
     };
+    this.emit('character_moved', move);
+    return move;
   }
 
   moveCharacterById(characterId: string, nextRoomId: string): PresenceMoveResult | null {
@@ -81,12 +81,14 @@ export class RoomPresence {
       this.socketIdByCharacter.delete(client.characterId);
     }
 
-    return {
+    const leave: PresenceLeaveResult = {
       characterId: client.characterId,
       characterName: client.characterName,
       previousRoomId: client.roomId,
       socketId,
     };
+    this.emit('character_left', leave);
+    return leave;
   }
 
   getSocketForCharacter(characterName: string): string | null {
