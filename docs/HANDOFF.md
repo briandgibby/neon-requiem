@@ -42,6 +42,11 @@
   - `npm run build`: passes.
   - `npm test -- --silent`: passes, **25 suites / 146 tests**.
   - Socket repro: `select_character` + `look` remains connected; malformed command now emits `Command failed unexpectedly.` without disconnecting.
+- Verified browser live test (2026-05-18, user-reported):
+  - Fresh browser flow worked after DB reset and client hardening.
+  - Character creation persisted well enough to enter the game.
+  - `say` and `look` commands worked without hard disconnect.
+  - Neon District traversal succeeded through the small playable area without blockers.
 - Database reset (2026-05-18 debugging pass):
   - Requested account wipe completed against configured Postgres DB.
   - Final verified counts: `accounts = 0`, `characters = 0`.
@@ -238,18 +243,16 @@ The project has moved from a shallow procedural model to a **Deep Module** archi
 
 1. **Merge `feat/phase-4.3` to main** — all tests green, build clean; ready to merge.
 2. All four architecture candidates from `/improve-codebase-architecture` are complete.
-3. **Neon District live test** — server is up and character creation works; still need to walk shadow-hub → shadow-gang-turf → neon-bazaar → shops end-to-end in-game.
+3. **Safe-zone mob AI enforcement** — `Room.isSafeZone` / `safeZoneOverrideActive` fields exist; mob AI should read `effectiveSafeZone = isSafeZone && !safeZoneOverrideActive` before targeting. Recommended next implementation slice because it is small and foundational for aggro/follow.
 4. **Elite mob spawn logic** — `MobTemplate.eliteOnly`/`corporationId` fields exist; spawn-at-RED trigger in `InstanceCleanupSystem` or a new `EliteSpawnSystem` is the next concrete task.
-5. **Safe-zone mob AI enforcement** — `Room.isSafeZone` / `safeZoneOverrideActive` fields exist; mob AI should read `effectiveSafeZone = isSafeZone && !safeZoneOverrideActive` before targeting.
-6. **Mob aggro/follow system** — room-to-room chase; safe-zone boundary enforcement; separate phase.
-7. **Body-guarding mechanic** — tank actively shields a jacked-in decker's physical body; separate phase.
-8. **Hotkey picker UI** — `CommandRegistry.getAll()` is ready; frontend component needed to let players configure hotkeys via dropdowns (accessibility requirement: full playability without typing).
+5. **Mob aggro/follow system** — room-to-room chase; safe-zone boundary enforcement; separate phase.
+6. **Body-guarding mechanic** — tank actively shields a jacked-in decker's physical body; separate phase.
+7. **Hotkey picker UI** — `CommandRegistry.getAll()` is ready; frontend component needed to let players configure hotkeys via dropdowns (accessibility requirement: full playability without typing).
 
 **Remaining carry-forward items:**
 - Snapshot history/admin tooling — no admin-facing snapshot history view yet
 - Frontend lint debt in `client/src` (explicit `any`, React hook rules, static components declared during render)
 - `WorldEventService` — `safeZoneOverrideActive` flag is wired at the DB level; a service to flip it during events is not yet implemented
-- Browser live test after fresh account creation — socket-level repro is green, but a real browser pass through register → create character → type commands should still be performed.
 
 
 ---
