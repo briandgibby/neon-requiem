@@ -48,6 +48,10 @@ export interface CombatSession {
   backupCalled: boolean;
 }
 
+export type SecurityAlarmResult =
+  | { triggered: true }
+  | { triggered: false; reason: 'safe_zone' };
+
 export type HitType = 'crit' | 'solid' | 'glancing' | 'dodge';
 export type AbsorbType = 'none' | 'some' | 'most';
 

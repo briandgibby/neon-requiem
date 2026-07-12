@@ -1,7 +1,7 @@
 # Neon Requiem - Project Handoff
 
 **Date:** 2026-05-23
-**Session focus:** Phase 4.3 merged to `main`; Phase 4.4A safe-zone enforcement planned.
+**Session focus:** Phase 4.4A safe-zone enforcement implemented and focused verification passed.
 
 ---
 
@@ -59,6 +59,19 @@
   - `npm test -- --silent`: passes, **25 suites / 146 tests**.
   - `cd client; npm exec -- tsc -b`: passes.
   - `cd client; npm run build`: passes with Vite chunk-size/plugin-timing warnings only.
+- Verified Phase 4.4A partial result (2026-05-23):
+  - `npm run build`: passes.
+  - `npm test -- --silent`: passes, **26 suites / 156 tests**.
+  - Focused tests also pass:
+    - `tests/world/world.service.test.ts`
+    - `tests/combat/combat.service.test.ts`
+    - `tests/engine/security-patrol.test.ts`
+- Verified Phase 4.4A reinforcement completion (2026-07-12):
+  - `npx jest --runInBand tests/engine/combat-system.test.ts tests/world/world.service.test.ts`: passes, **2 suites / 22 tests**.
+  - `npm run build`: passes.
+- Verified Phase 4.4A final backend result (2026-07-12):
+  - `npm test -- --silent`: passes, **26 suites / 163 tests**.
+  - `npm run build`: passes.
 
 ---
 
@@ -243,7 +256,7 @@ The project has moved from a shallow procedural model to a **Deep Module** archi
      - Safe-zone fields (`isSafeZone`, `safeZoneOverrideActive`) on `Room`
    - **Follow-on phases (not this slice):** mob aggro/follow system; body-guarding mechanic; elite mob spawn logic at RED alert; safe-zone enforcement in mob AI
 
-15. **Phase 4.4A — Safe-Zone Enforcement Foundation (PLANNED, 2026-05-23):**
+15. **Phase 4.4A — Safe-Zone Enforcement Foundation (COMPLETE, 2026-07-12):**
    - Plan: `docs/superpowers/plans/2026-05-23-phase-4.4a-safe-zone-enforcement.md`
    - Metadata convention added to the plan doc for graph/search friendliness: phase, status, dependencies, enabled future work, domains, and systems.
    - Scope decision:
@@ -253,10 +266,25 @@ The project has moved from a shallow procedural model to a **Deep Module** archi
      - `effectiveSafeZone = room.isSafeZone && !room.safeZoneOverrideActive`
      - The policy belongs in the World domain because it governs zone-specific behavior flags.
    - Enforcement decisions:
-     - Add a world-domain helper/service lookup so callers do not duplicate flag logic.
-     - Gate automated alarm triggering so effective safe zones do not create/mutate combat sessions into RED escalation.
-     - Gate reinforcement spawning as a second check, so stale sessions or event flag changes cannot spawn hostile mobs after protection resumes.
-     - Blocked automated alarms should be clean no-ops with explicit results and should not mark rooms clean.
+     - Add a world-domain helper/service lookup so callers do not duplicate flag logic. **Done.**
+     - Gate automated alarm triggering so effective safe zones do not create/mutate combat sessions into RED escalation. **Done.**
+     - Gate reinforcement spawning as a second check, so stale sessions or event flag changes cannot spawn hostile mobs after protection resumes. **Done.**
+     - Blocked automated alarms should be clean no-ops with explicit results and should not mark rooms clean. **Done.**
+   - Implemented:
+     - `src/domains/world/world.types.ts`: added `isEffectiveSafeZone(room)` using `room.isSafeZone && !room.safeZoneOverrideActive`.
+     - `src/domains/world/world.service.ts`: added `WorldService.isEffectiveSafeZone(roomId)`, throwing `NotFoundError('Room')` for missing rooms to match existing world lookup behavior.
+     - `src/domains/combat/combat.types.ts`: added `SecurityAlarmResult`.
+     - `src/domains/combat/combat.service.ts`: `triggerSecurityAlarm(roomId)` now owns safe-zone alarm blocking through the world-domain safe-zone policy and checks before `getOrCreateEcsSession`.
+     - `src/engine/security-patrol.ts`: patrol reacts to the explicit alarm result, logs safe-zone skips, and reports triggered/skipped counts without knowing safe-zone flags.
+     - `src/engine/ecs/systems/combat-reinforcement-system.ts`: reinforcement spawning checks a narrow safe-zone policy, clears blocked pending timers, and preserves override/non-safe behavior.
+     - `src/server.ts`: supplies `WorldService` to the reinforcement system as the safe-zone policy implementation.
+     - Tests added/updated:
+       - `tests/world/world.service.test.ts`
+       - `tests/combat/combat.service.test.ts`
+       - `tests/engine/security-patrol.test.ts`
+       - `tests/engine/combat-system.test.ts`
+   - Architecture note:
+     - `/improve-codebase-architecture` review recommended making `triggerSecurityAlarm` the deep module for alarm blocking. Implemented: safe-zone checks, ECS session creation ordering, RED mutation, and no-op result all sit behind the alarm interface.
    - Deferred event behavior:
      - Future hostile safe-zone events may set `safeZoneOverrideActive = true` for affected rooms.
      - Event-specific logic may enable alarm-like behavior, but civic-defense events should be able to spawn friendly/allied security NPCs who fight alongside recruited players rather than hostile law/security mobs.
@@ -266,19 +294,10 @@ The project has moved from a shallow procedural model to a **Deep Module** archi
 
 ## 4. Immediate Next Steps (Phase 4.4+)
 
-**Implement Phase 4.4A**
+**Phase 4.4A is implementation-complete**
 
-1. Commit the new Phase 4.4A plan doc and this handoff update.
-2. Add world-domain safe-zone policy helper and service lookup:
-   - pure helper for known `RoomRecord`
-   - `WorldService.isEffectiveSafeZone(roomId)` for systems with only a room id
-3. Update `CombatService.triggerSecurityAlarm(roomId)` to return an explicit trigger result and no-op in effective safe zones.
-4. Update `SecurityPatrol` tests/behavior so dirty effective safe-zone rooms are skipped without combat-state mutation.
-5. Inject the world-domain policy into `CombatReinforcementSystem` and block hostile reinforcement spawns in effective safe zones.
-6. Run backend verification:
-   - `npm run build`
-   - `npm test -- --silent`
-7. Follow-on after 4.4A:
+1. Review and commit the Phase 4.4A implementation and documentation when ready.
+2. Follow-on after 4.4A:
    - Elite mob spawn logic at RED alert
    - Mob aggro/follow system with safe-zone boundary enforcement
    - Body-guarding mechanic for jacked-in deckers

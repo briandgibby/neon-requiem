@@ -154,6 +154,7 @@ async function bootstrap() {
     combatRepo, 
     charRepo, 
     worldRepo, 
+    worldService,
     mobRepo, 
     magicService, 
     matrixService,
@@ -179,7 +180,7 @@ async function bootstrap() {
   heartbeat.subscribe(new SecurityPatrol(db, combatService, app.log));
   heartbeat.subscribe(new RegenSystem(ecsRegistry));
   heartbeat.subscribe(new CombatTickSystem(ecsRegistry));
-  heartbeat.subscribe(new CombatReinforcementSystem(ecsRegistry, mobRepo));
+  heartbeat.subscribe(new CombatReinforcementSystem(ecsRegistry, mobRepo, worldService));
   heartbeat.subscribe(new MatrixTickSystem(ecsRegistry, matrixRepo, instanceRepo));
   heartbeat.subscribe(new IceAiSystem(ecsRegistry));
   heartbeat.subscribe(new MissionSystem(ecsRegistry, (missionId, index) => missionService.updateObjectiveProgress(missionId, index)));

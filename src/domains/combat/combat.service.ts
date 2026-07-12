@@ -4,7 +4,7 @@ import { WorldRepository } from '../world/world.repository';
 import { MobRepository } from './mob.repository';
 import { MagicService } from '../magic/magic.service';
 import { MatrixService } from '../matrix/matrix.service';
-import { MoveInput } from './combat.types';
+import { MoveInput, SecurityAlarmResult } from './combat.types';
 import { 
   MAX_AP, 
 } from '../../shared/constants';
@@ -23,6 +23,10 @@ import { PlayerEntityFactory } from '../../engine/ecs/factories/player-entity-fa
 
 import { PlayerSyncCoordinator } from '../../engine/player-sync-coordinator';
 
+export interface SafeZonePolicy {
+  isEffectiveSafeZone(roomId: string): Promise<boolean>;
+}
+
 export class CombatService implements Tickable {
   readonly name = 'CombatService';
   readonly frequency = 1; // Process combat every tick
@@ -31,6 +35,7 @@ export class CombatService implements Tickable {
     private readonly combatRepo: CombatRepository,
     private readonly charRepo: CharacterRepository,
     private readonly worldRepo: WorldRepository,
+    private readonly safeZonePolicy: SafeZonePolicy,
     private readonly mobRepo: MobRepository,
     private readonly magicService: MagicService,
     private readonly matrixService: MatrixService,
@@ -69,7 +74,11 @@ export class CombatService implements Tickable {
     return sessionId;
   }
 
-  async triggerSecurityAlarm(roomId: string): Promise<void> {
+  async triggerSecurityAlarm(roomId: string): Promise<SecurityAlarmResult> {
+    if (await this.safeZonePolicy.isEffectiveSafeZone(roomId)) {
+      return { triggered: false, reason: 'safe_zone' };
+    }
+
     const sessionId = await this.getOrCreateEcsSession(roomId);
     const session = this.ecsRegistry.getComponent<CombatSessionComponent>(
       sessionId,
@@ -81,6 +90,8 @@ export class CombatService implements Tickable {
     session.alarmState = 'RED';
     session.backupCalled = true;
     session.turnsUntilReinforcements = 1;
+
+    return { triggered: true };
   }
 
   async joinCombat(characterId: string, accountId: string, roomId: string): Promise<void> {

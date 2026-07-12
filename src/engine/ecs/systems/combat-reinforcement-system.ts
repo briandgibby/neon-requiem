@@ -4,13 +4,18 @@ import { ComponentTypes, CombatSessionComponent } from '../components';
 import { MobRepository } from '../../../domains/combat/mob.repository';
 import { MobFactory } from '../factories/mob-factory';
 
+export interface SafeZonePolicy {
+  isEffectiveSafeZone(roomId: string): Promise<boolean>;
+}
+
 export class CombatReinforcementSystem implements Tickable {
   readonly name = 'ecs_combat_reinforcement_system';
   readonly frequency = 1;
 
   constructor(
     private readonly registry: EcsRegistry,
-    private readonly mobRepo: MobRepository
+    private readonly mobRepo: MobRepository,
+    private readonly safeZonePolicy: SafeZonePolicy
   ) {}
 
   async onTick(_tickCount: number): Promise<void> {
@@ -21,6 +26,12 @@ export class CombatReinforcementSystem implements Tickable {
       if (!session) continue;
 
       if (session.backupCalled && session.turnsUntilReinforcements === 0) {
+        const isSafeZone = await this.safeZonePolicy.isEffectiveSafeZone(session.roomId);
+        if (isSafeZone) {
+          session.turnsUntilReinforcements = null;
+          continue;
+        }
+
         // Trigger spawn
         await this.spawnReinforcements(session, sessionId);
         session.turnsUntilReinforcements = null; // Reset
@@ -33,7 +44,7 @@ export class CombatReinforcementSystem implements Tickable {
     if (!template) return;
 
     const entityId = MobFactory.createFromTemplate(this.registry, template, session.roomId);
-    
+
     // Link to session
     const status = this.registry.getComponent<any>(entityId, ComponentTypes.CombatStatus);
     if (status) {

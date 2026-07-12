@@ -1,12 +1,13 @@
 import { CombatService } from '../../src/domains/combat/combat.service';
 import { MAX_AP, COMMAND_AP_PENALTY } from '../../src/shared/constants';
-import { ValidationError } from '../../src/shared/errors';
+import { NotFoundError, ValidationError } from '../../src/shared/errors';
 
 describe('CombatService', () => {
   let service: CombatService;
   let mockCombatRepo: any;
   let mockCharRepo: any;
   let mockWorldRepo: any;
+  let mockSafeZonePolicy: any;
   let mockMobRepo: any;
   let mockMagicService: any;
   let mockMatrixService: any;
@@ -27,6 +28,9 @@ describe('CombatService', () => {
     mockWorldRepo = {
       findRoomById: jest.fn(),
       updateRoom: jest.fn(),
+    };
+    mockSafeZonePolicy = {
+      isEffectiveSafeZone: jest.fn().mockResolvedValue(false),
     };
     mockMobRepo = {
       findBySlug: jest.fn(),
@@ -49,6 +53,7 @@ describe('CombatService', () => {
       mockCombatRepo,
       mockCharRepo as any,
       mockWorldRepo as any,
+      mockSafeZonePolicy as any,
       mockMobRepo as any,
       mockMagicService as any,
       mockMatrixService as any,
@@ -99,6 +104,74 @@ describe('CombatService', () => {
         'player_id', 
         expect.objectContaining({ characterId: 'char_1' })
       );
+    });
+  });
+
+  describe('triggerSecurityAlarm', () => {
+    it('does not create or mutate a combat session in an effective safe zone', async () => {
+      mockSafeZonePolicy.isEffectiveSafeZone.mockResolvedValue(true);
+
+      const result = await service.triggerSecurityAlarm('room_1');
+
+      expect(result).toEqual({ triggered: false, reason: 'safe_zone' });
+      expect(mockEcsRegistry.getEntityByComponent).not.toHaveBeenCalled();
+      expect(mockEcsRegistry.createEntity).not.toHaveBeenCalled();
+      expect(mockEcsRegistry.addComponent).not.toHaveBeenCalled();
+      expect(mockEcsRegistry.getComponent).not.toHaveBeenCalled();
+      expect(mockWorldRepo.updateRoom).not.toHaveBeenCalled();
+    });
+
+    it('throws NotFoundError and does not create a combat session when room is missing', async () => {
+      mockSafeZonePolicy.isEffectiveSafeZone.mockRejectedValue(new NotFoundError('Room'));
+
+      await expect(service.triggerSecurityAlarm('missing_room')).rejects.toThrow(NotFoundError);
+
+      expect(mockEcsRegistry.getEntityByComponent).not.toHaveBeenCalled();
+      expect(mockEcsRegistry.createEntity).not.toHaveBeenCalled();
+      expect(mockEcsRegistry.addComponent).not.toHaveBeenCalled();
+      expect(mockEcsRegistry.getComponent).not.toHaveBeenCalled();
+    });
+
+    it('triggers RED alert when safe zone override is active', async () => {
+      const session = {
+        roomId: 'room_1',
+        securityRating: 'A',
+        alarmState: 'GREEN',
+        turnsUntilReinforcements: null,
+        backupCalled: false,
+        tick: 0,
+      };
+      mockSafeZonePolicy.isEffectiveSafeZone.mockResolvedValue(false);
+      mockEcsRegistry.getEntityByComponent.mockReturnValue('session-1');
+      mockEcsRegistry.getComponent.mockReturnValue(session);
+
+      const result = await service.triggerSecurityAlarm('room_1');
+
+      expect(result).toEqual({ triggered: true });
+      expect(session.alarmState).toBe('RED');
+      expect(session.backupCalled).toBe(true);
+      expect(session.turnsUntilReinforcements).toBe(1);
+    });
+
+    it('triggers RED alert in a non-safe-zone room', async () => {
+      const session = {
+        roomId: 'room_1',
+        securityRating: 'C',
+        alarmState: 'GREEN',
+        turnsUntilReinforcements: null,
+        backupCalled: false,
+        tick: 0,
+      };
+      mockSafeZonePolicy.isEffectiveSafeZone.mockResolvedValue(false);
+      mockEcsRegistry.getEntityByComponent.mockReturnValue('session-1');
+      mockEcsRegistry.getComponent.mockReturnValue(session);
+
+      const result = await service.triggerSecurityAlarm('room_1');
+
+      expect(result).toEqual({ triggered: true });
+      expect(session.alarmState).toBe('RED');
+      expect(session.backupCalled).toBe(true);
+      expect(session.turnsUntilReinforcements).toBe(1);
     });
   });
 
