@@ -344,6 +344,19 @@ The project has moved from a shallow procedural model to a **Deep Module** archi
      - Multiple-guard priority ordering.
      - Combat log/broadcast output for interception.
 
+19. **Command Picker Hotkey Slice (COMPLETE, 2026-07-12):**
+   - Plan: `docs/superpowers/plans/2026-07-12-command-picker-hotkeys.md`
+   - Implemented:
+     - Added command metadata serialization over `CommandRegistry.getAll()`.
+     - Added authenticated `GET /api/commands`, returning safe command metadata without executors.
+     - Added a mode-aware client command picker for physical vs. matrix commands.
+     - Commands without usage run directly from picker buttons; commands with usage can be selected and composed with an argument field.
+     - Movement aliases remain alias-only in the picker: entering `e` for Move sends `e`, not `n e`.
+   - Deferred follow-ons:
+     - Persisted per-character hotkey mappings.
+     - Entity-aware argument dropdowns for commands such as `spike <ice-id>`.
+     - Drag/drop or keyboard remapping UI.
+
 ---
 
 ## 4. Immediate Next Steps (Phase 4.4+)
@@ -353,7 +366,7 @@ The project has moved from a shallow procedural model to a **Deep Module** archi
 1. Confirm the current branch includes the Phase 4.4B Slice 3 multi-room pursuit commit.
 2. Follow-on after multi-room pursuit:
    - Alert-expanded patrol routes for YELLOW/RED alert
-   - Hotkey picker UI from `CommandRegistry.getAll()`
+   - Persisted hotkey mappings and entity-aware command argument pickers
 
 **Remaining carry-forward items:**
 - Snapshot history/admin tooling — no admin-facing snapshot history view yet

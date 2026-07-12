@@ -23,6 +23,14 @@ export interface CommandHandler {
   execute(context: CommandContext): Promise<void>;
 }
 
+export interface CommandMetadata {
+  aliases: string[];
+  mode: ExecutionMode;
+  label: string;
+  description: string;
+  usage?: string;
+}
+
 export class CommandRegistry {
   private readonly byAlias = new Map<string, CommandHandler>();
   private readonly all: CommandHandler[] = [];
@@ -41,4 +49,14 @@ export class CommandRegistry {
   getAll(): CommandHandler[] {
     return this.all;
   }
+}
+
+export function listCommandMetadata(registry: CommandRegistry): CommandMetadata[] {
+  return registry.getAll().map((handler) => ({
+    aliases: [...handler.aliases],
+    mode: handler.mode,
+    label: handler.label,
+    description: handler.description,
+    usage: handler.usage,
+  }));
 }

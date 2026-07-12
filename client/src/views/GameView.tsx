@@ -1,8 +1,11 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { Terminal } from '../components/Terminal';
 import type { TerminalHandle } from '../components/Terminal';
+import { CommandPicker } from '../components/CommandPicker';
+import type { CommandMetadata } from '../components/CommandPicker';
 import { Shield, Activity, Map as MapIcon, Terminal as TerminalIcon } from 'lucide-react';
 import { useSocket } from '../hooks/useSocket';
+import { apiUrl } from '../lib/api';
 
 interface Character {
   id: string;
@@ -44,7 +47,30 @@ export const GameView: React.FC<GameViewProps> = ({ token, character, onLogout }
   const [matrixData, setMatrixData] = useState<any>(null);
   const [localPois, setLocalPois] = useState<any[]>([]);
   const [roomOccupants, setRoomOccupants] = useState<RoomOccupant[]>([]);
+  const [commands, setCommands] = useState<CommandMetadata[]>([]);
   const terminalRef = useRef<TerminalHandle>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    fetch(apiUrl('/api/commands'), {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then((response) => {
+        if (!response.ok) throw new Error('Failed to load command catalog');
+        return response.json();
+      })
+      .then((data: { commands?: CommandMetadata[] }) => {
+        if (!cancelled) setCommands(data.commands ?? []);
+      })
+      .catch((err) => {
+        console.error('[GameView] command catalog load failed:', err);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [token]);
 
   useEffect(() => {
     if (!socket) return;
@@ -352,6 +378,15 @@ export const GameView: React.FC<GameViewProps> = ({ token, character, onLogout }
               </button>
             ))}
           </div>
+        </div>
+
+        <div className={`h-72 neon-panel p-4 flex flex-col ${charData.isJackedIn ? 'border-cyan-500/50 shadow-[0_0_15px_rgba(34,211,238,0.2)]' : ''}`}>
+          <CornerAccents />
+          <CommandPicker
+            commands={commands}
+            isMatrixMode={charData.isJackedIn}
+            onCommand={handleCommand}
+          />
         </div>
       </div>
 

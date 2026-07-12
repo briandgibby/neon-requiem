@@ -29,6 +29,7 @@ import { PlayerSyncCoordinator } from './engine/player-sync-coordinator';
 import { SocketHub } from './engine/socket-hub';
 import { CommandDispatcher } from './engine/command-dispatcher';
 import { CommandRegistry } from './engine/command-registry';
+import { registerCommandRoutes } from './engine/command.routes';
 import { MoveHandler } from './engine/commands/move.handler';
 import { NavigateHandler } from './engine/commands/navigate.handler';
 import { LookHandler } from './engine/commands/look.handler';
@@ -206,6 +207,7 @@ async function bootstrap() {
   commandRegistry.register(new SleazeHandler(matrixService));
   commandRegistry.register(new DataSpikeHandler(matrixService));
   commandRegistry.register(new HelpHandler(commandRegistry));
+  registerCommandRoutes(app, commandRegistry, authService);
 
   const commandDispatcher = new CommandDispatcher(commandRegistry, socketHub, ecsRegistry);
 
