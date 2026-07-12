@@ -17,27 +17,55 @@ import {
   SkillsComponent,
 } from '../../src/engine/ecs/components';
 
+type TestRoom = {
+  id: string;
+  slug: string;
+  factionOwner: string | null;
+  exits: Record<string, string>;
+};
+
 function createDispatcher(): MoveDispatcher {
   const dispatcher = new MoveDispatcher();
   dispatcher.register(new AttackExecutor());
   return dispatcher;
 }
 
-function createWorldPolicy(safeRooms: string[] = []) {
-  const rooms = new Map([
+function createWorldPolicy(safeRooms: string[] = [], roomOverrides: TestRoom[] = []) {
+  const rooms = new Map<string, TestRoom>([
     ['room-1', { id: 'room-1', slug: 'room-one', factionOwner: null, exits: { east: 'room-two', north: 'safe-room' } }],
-    ['room-2', { id: 'room-2', slug: 'room-two', factionOwner: null, exits: { west: 'room-one' } }],
-    ['safe-room', { id: 'safe-room', slug: 'safe-room', factionOwner: null, exits: { south: 'room-one' } }],
+    ['room-2', { id: 'room-2', slug: 'room-two', factionOwner: null, exits: { west: 'room-one', east: 'room-three' } }],
+    ['room-3', { id: 'room-3', slug: 'room-three', factionOwner: null, exits: { west: 'room-two' } }],
+    ['room-4', { id: 'room-4', slug: 'room-four', factionOwner: null, exits: { west: 'safe-room' } }],
+    ['safe-room', { id: 'safe-room', slug: 'safe-room', factionOwner: null, exits: { south: 'room-one', east: 'room-four' } }],
   ]);
+  roomOverrides.forEach((room) => rooms.set(room.id, room));
 
   return {
     isEffectiveSafeZone: jest.fn((roomId: string) => Promise.resolve(safeRooms.includes(roomId))),
     getRoom: jest.fn((roomId: string) => {
-      const room = rooms.get(roomId);
+      const room = rooms.get(roomId) ?? Array.from(rooms.values()).find((candidate) => candidate.slug === roomId);
       if (!room) throw new Error(`Missing test room ${roomId}`);
       return Promise.resolve(room);
     }),
   };
+}
+
+function createLinearWorldPolicy(roomCount: number) {
+  const rooms = Array.from({ length: roomCount }, (_, index): TestRoom => {
+    const roomNumber = index + 1;
+    const exits: Record<string, string> = {};
+    if (roomNumber > 1) exits.west = `linear-${roomNumber - 1}`;
+    if (roomNumber < roomCount) exits.east = `linear-${roomNumber + 1}`;
+
+    return {
+      id: `linear-${roomNumber}`,
+      slug: `linear-${roomNumber}`,
+      factionOwner: null,
+      exits,
+    };
+  });
+
+  return createWorldPolicy([], rooms);
 }
 
 function addPhysicalPlayer(registry: EcsRegistry, roomId: string): string {
@@ -285,12 +313,84 @@ describe('MobAiSystem', () => {
     expect(ai?.targetEntityId).toBe(playerId);
   });
 
+  it('moves one room along a path toward an existing target multiple rooms away', async () => {
+    const registry = new EcsRegistry();
+    const worldPolicy = createWorldPolicy();
+    const system = new MobAiSystem(registry, createDispatcher(), worldPolicy);
+
+    const playerId = addPhysicalPlayer(registry, 'room-3');
+    const mobId = addHostileMob(registry, 'room-1');
+    const ai = registry.getComponent<AiComponent>(mobId, ComponentTypes.Ai);
+    if (ai) ai.targetEntityId = playerId;
+
+    await system.onTick(1);
+
+    const mobPosition = registry.getComponent<PositionComponent>(mobId, ComponentTypes.Position);
+    const playerHealth = registry.getComponent<HealthComponent>(playerId, ComponentTypes.Health);
+    expect(mobPosition?.roomId).toBe('room-2');
+    expect(playerHealth?.current).toBe(100);
+    expect(ai?.targetEntityId).toBe(playerId);
+  });
+
   it('drops its target instead of following across a safe-zone boundary', async () => {
     const registry = new EcsRegistry();
     const worldPolicy = createWorldPolicy(['safe-room']);
     const system = new MobAiSystem(registry, createDispatcher(), worldPolicy);
 
     const playerId = addPhysicalPlayer(registry, 'safe-room');
+    const mobId = addHostileMob(registry, 'room-1');
+    const ai = registry.getComponent<AiComponent>(mobId, ComponentTypes.Ai);
+    if (ai) ai.targetEntityId = playerId;
+
+    await system.onTick(1);
+
+    const mobPosition = registry.getComponent<PositionComponent>(mobId, ComponentTypes.Position);
+    expect(mobPosition?.roomId).toBe('room-1');
+    expect(ai?.targetEntityId).toBeUndefined();
+  });
+
+  it('does not path through an intermediate safe-zone room during pursuit', async () => {
+    const registry = new EcsRegistry();
+    const worldPolicy = createWorldPolicy(['safe-room']);
+    const system = new MobAiSystem(registry, createDispatcher(), worldPolicy);
+
+    const playerId = addPhysicalPlayer(registry, 'room-4');
+    const mobId = addHostileMob(registry, 'room-1');
+    const ai = registry.getComponent<AiComponent>(mobId, ComponentTypes.Ai);
+    if (ai) ai.targetEntityId = playerId;
+
+    await system.onTick(1);
+
+    const mobPosition = registry.getComponent<PositionComponent>(mobId, ComponentTypes.Position);
+    expect(mobPosition?.roomId).toBe('room-1');
+    expect(ai?.targetEntityId).toBeUndefined();
+  });
+
+  it('drops a target beyond the bounded pursuit search range', async () => {
+    const registry = new EcsRegistry();
+    const worldPolicy = createLinearWorldPolicy(10);
+    const system = new MobAiSystem(registry, createDispatcher(), worldPolicy);
+
+    const playerId = addPhysicalPlayer(registry, 'linear-10');
+    const mobId = addHostileMob(registry, 'linear-1');
+    const ai = registry.getComponent<AiComponent>(mobId, ComponentTypes.Ai);
+    if (ai) ai.targetEntityId = playerId;
+
+    await system.onTick(1);
+
+    const mobPosition = registry.getComponent<PositionComponent>(mobId, ComponentTypes.Position);
+    expect(mobPosition?.roomId).toBe('linear-1');
+    expect(ai?.targetEntityId).toBeUndefined();
+  });
+
+  it('does not pursue through exits that only resolve as room ids', async () => {
+    const registry = new EcsRegistry();
+    const worldPolicy = createWorldPolicy([], [
+      { id: 'room-1', slug: 'room-one', factionOwner: null, exits: { east: 'room-2' } },
+    ]);
+    const system = new MobAiSystem(registry, createDispatcher(), worldPolicy);
+
+    const playerId = addPhysicalPlayer(registry, 'room-2');
     const mobId = addHostileMob(registry, 'room-1');
     const ai = registry.getComponent<AiComponent>(mobId, ComponentTypes.Ai);
     if (ai) ai.targetEntityId = playerId;

@@ -17,6 +17,10 @@ import {
 import { RoomLookup, SafeZonePolicy } from '../../../domains/world/world.types';
 
 interface MobAiWorldPolicy extends SafeZonePolicy, RoomLookup {}
+type MobAiRoom = Awaited<ReturnType<RoomLookup['getRoom']>>;
+
+// Keep heartbeat work bounded; targets beyond this range are treated as lost scent.
+const MAX_PURSUIT_SEARCH_DEPTH = 8;
 
 export class MobAiSystem implements Tickable {
   readonly name = 'ecs_mob_ai_system';
@@ -112,25 +116,67 @@ export class MobAiSystem implements Tickable {
       return true;
     }
 
-    let canReachTarget = false;
-    let nextRoomId = targetRoomId;
     try {
-      const [currentRoom, targetRoom] = await Promise.all([
-        this.worldPolicy.getRoom(mobPosition.roomId),
-        this.worldPolicy.getRoom(targetRoomId),
-      ]);
-      const exits = currentRoom.exits ?? {};
-      canReachTarget = Object.values(exits).includes(targetRoom.slug);
-      nextRoomId = targetRoom.id;
+      const nextRoomId = await this.findNextPursuitRoomId(mobPosition.roomId, targetRoomId, safeZoneCache);
+      if (!nextRoomId) return false;
+
+      mobPosition.roomId = nextRoomId;
+      return true;
     } catch (_err) {
       ai.targetEntityId = undefined;
       return true;
     }
+  }
 
-    if (!canReachTarget) return false;
+  private async findNextPursuitRoomId(
+    startRoomId: string,
+    targetRoomId: string,
+    safeZoneCache: Map<string, boolean>,
+  ): Promise<string | undefined> {
+    const [startRoom, targetRoom] = await Promise.all([
+      this.worldPolicy.getRoom(startRoomId),
+      this.worldPolicy.getRoom(targetRoomId),
+    ]);
+    if (startRoom.id === targetRoom.id) return undefined;
 
-    mobPosition.roomId = nextRoomId;
-    return true;
+    const queue: Array<{ room: MobAiRoom; depth: number; firstStepRoomId?: string }> = [
+      { room: startRoom, depth: 0 },
+    ];
+    const visitedRoomIds = new Set<string>([startRoom.id]);
+
+    while (queue.length > 0) {
+      const current = queue.shift()!;
+      if (current.depth >= MAX_PURSUIT_SEARCH_DEPTH) continue;
+
+      const exits = current.room.exits ?? {};
+      for (const exitRoomSlug of Object.values(exits)) {
+        if (!exitRoomSlug) continue;
+
+        const nextRoom = await this.worldPolicy.getRoom(exitRoomSlug);
+        if (nextRoom.slug !== exitRoomSlug) continue;
+        if (visitedRoomIds.has(nextRoom.id)) continue;
+        visitedRoomIds.add(nextRoom.id);
+
+        const nextRoomSafeZone = await this.tryGetEffectiveSafeZone(nextRoom.id, safeZoneCache);
+        if (nextRoomSafeZone === undefined) {
+          throw new Error('Unable to resolve pursuit safe-zone state');
+        }
+        if (nextRoomSafeZone) continue;
+
+        const firstStepRoomId = current.firstStepRoomId ?? nextRoom.id;
+        if (nextRoom.id === targetRoom.id) {
+          return firstStepRoomId;
+        }
+
+        queue.push({
+          room: nextRoom,
+          depth: current.depth + 1,
+          firstStepRoomId,
+        });
+      }
+    }
+
+    return undefined;
   }
 
   private findTargetInRoom(roomId: string, preferredTargetId?: EntityId): EntityId | undefined {
