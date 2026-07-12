@@ -192,8 +192,8 @@ async function bootstrap() {
   const socketHub = new SocketHub(app.server, authService, roomPresence, syncCoordinator);
 
   const commandRegistry = new CommandRegistry();
-  commandRegistry.register(new MoveHandler(worldService, socketHub, instanceRepo));
-  commandRegistry.register(new NavigateHandler(worldService, socketHub, instanceRepo));
+  commandRegistry.register(new MoveHandler(worldService, socketHub, instanceRepo, ecsRegistry));
+  commandRegistry.register(new NavigateHandler(worldService, socketHub, instanceRepo, ecsRegistry));
   commandRegistry.register(new LookHandler(worldService, matrixService, socketHub));
   commandRegistry.register(new WhoHandler(socketHub));
   commandRegistry.register(new SayHandler(socketHub));

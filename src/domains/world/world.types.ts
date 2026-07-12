@@ -39,6 +39,12 @@ export interface SafeZonePolicy {
   isEffectiveSafeZone(roomId: string): Promise<boolean>;
 }
 
+export type RoomExitMap = Partial<Record<Direction, string>>;
+
+export interface RoomLookup {
+  getRoom(slugOrId: string): Promise<Pick<RoomRecord, 'id' | 'slug'> & { exits: RoomExitMap | null }>;
+}
+
 export function isEffectiveSafeZone(
   room: Pick<RoomRecord, 'isSafeZone' | 'safeZoneOverrideActive'>,
 ): boolean {

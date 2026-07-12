@@ -14,7 +14,9 @@ import {
   PositionComponent,
   SkillsComponent,
 } from '../components';
-import { SafeZonePolicy } from '../../../domains/world/world.types';
+import { RoomLookup, SafeZonePolicy } from '../../../domains/world/world.types';
+
+interface MobAiWorldPolicy extends SafeZonePolicy, RoomLookup {}
 
 export class MobAiSystem implements Tickable {
   readonly name = 'ecs_mob_ai_system';
@@ -23,7 +25,7 @@ export class MobAiSystem implements Tickable {
   constructor(
     private readonly registry: EcsRegistry,
     private readonly moveDispatcher: MoveDispatcher,
-    private readonly safeZonePolicy: SafeZonePolicy,
+    private readonly worldPolicy: MobAiWorldPolicy,
   ) {}
 
   async onTick(_tickCount: number): Promise<void> {
@@ -45,13 +47,22 @@ export class MobAiSystem implements Tickable {
       if (!ai || !position || !health || !status) continue;
       if (health.current <= 0 || ai.state !== 'hostile') continue;
 
-      if (await this.isEffectiveSafeZone(position.roomId, safeZoneCache)) {
+      const currentRoomSafeZone = await this.tryGetEffectiveSafeZone(position.roomId, safeZoneCache);
+      if (currentRoomSafeZone === undefined) {
+        ai.targetEntityId = undefined;
+        continue;
+      }
+
+      if (currentRoomSafeZone) {
         ai.targetEntityId = undefined;
         continue;
       }
 
       const targetId = this.findTargetInRoom(position.roomId, ai.targetEntityId);
       if (!targetId) {
+        if (ai.targetEntityId && await this.tryPursueTarget(ai, position, ai.targetEntityId, safeZoneCache)) {
+          continue;
+        }
         ai.targetEntityId = undefined;
         continue;
       }
@@ -67,13 +78,58 @@ export class MobAiSystem implements Tickable {
     }
   }
 
-  private async isEffectiveSafeZone(roomId: string, cache: Map<string, boolean>): Promise<boolean> {
+  private async tryGetEffectiveSafeZone(roomId: string, cache: Map<string, boolean>): Promise<boolean | undefined> {
     const cached = cache.get(roomId);
     if (cached !== undefined) return cached;
 
-    const result = await this.safeZonePolicy.isEffectiveSafeZone(roomId);
-    cache.set(roomId, result);
-    return result;
+    try {
+      const result = await this.worldPolicy.isEffectiveSafeZone(roomId);
+      cache.set(roomId, result);
+      return result;
+    } catch (_err) {
+      return undefined;
+    }
+  }
+
+  private async tryPursueTarget(
+    ai: AiComponent,
+    mobPosition: PositionComponent,
+    targetId: EntityId,
+    safeZoneCache: Map<string, boolean>,
+  ): Promise<boolean> {
+    const targetRoomId = this.getTargetPhysicalRoomId(targetId);
+    if (!targetRoomId) return false;
+
+    const targetRoomSafeZone = await this.tryGetEffectiveSafeZone(targetRoomId, safeZoneCache);
+    if (targetRoomSafeZone === undefined) {
+      ai.targetEntityId = undefined;
+      return true;
+    }
+
+    if (targetRoomSafeZone) {
+      ai.targetEntityId = undefined;
+      return true;
+    }
+
+    let canReachTarget = false;
+    let nextRoomId = targetRoomId;
+    try {
+      const [currentRoom, targetRoom] = await Promise.all([
+        this.worldPolicy.getRoom(mobPosition.roomId),
+        this.worldPolicy.getRoom(targetRoomId),
+      ]);
+      const exits = currentRoom.exits ?? {};
+      canReachTarget = Object.values(exits).includes(targetRoom.slug);
+      nextRoomId = targetRoom.id;
+    } catch (_err) {
+      ai.targetEntityId = undefined;
+      return true;
+    }
+
+    if (!canReachTarget) return false;
+
+    mobPosition.roomId = nextRoomId;
+    return true;
   }
 
   private findTargetInRoom(roomId: string, preferredTargetId?: EntityId): EntityId | undefined {
@@ -102,10 +158,13 @@ export class MobAiSystem implements Tickable {
     if (!player || !position || !health || !attributes || !skills) return false;
     if (health.current <= 0) return false;
 
-    return this.getPhysicalRoomId(entityId, position) === roomId;
+    return this.getTargetPhysicalRoomId(entityId, position) === roomId;
   }
 
-  private getPhysicalRoomId(entityId: EntityId, position: PositionComponent): string {
+  private getTargetPhysicalRoomId(entityId: EntityId, knownPosition?: PositionComponent): string | undefined {
+    const position = knownPosition ?? this.registry.getComponent<PositionComponent>(entityId, ComponentTypes.Position);
+    if (!position) return undefined;
+
     const decker = this.registry.getComponent<DeckerComponent>(entityId, ComponentTypes.Decker);
     return decker?.physicalRoomId || position.roomId;
   }

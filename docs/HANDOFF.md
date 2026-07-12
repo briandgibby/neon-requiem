@@ -290,7 +290,7 @@ The project has moved from a shallow procedural model to a **Deep Module** archi
      - Event-specific logic may enable alarm-like behavior, but civic-defense events should be able to spawn friendly/allied security NPCs who fight alongside recruited players rather than hostile law/security mobs.
      - Event lifecycle, faction allegiance, friendly NPC support, recruitment, participation rewards, and cleanup guarantees are deferred to later event-system phases.
 
-16. **Phase 4.4B — Physical Mob AI Targeting (SLICE 1 COMPLETE, 2026-07-12):**
+16. **Phase 4.4B — Physical Mob AI Targeting (SLICE 2 COMPLETE, 2026-07-12):**
    - Plan: `docs/superpowers/plans/2026-07-12-phase-4.4b-mob-ai-targeting.md`
    - First vertical slice:
      - Added `MobAiSystem` as a heartbeat subscriber for hostile physical NPC behavior.
@@ -301,8 +301,13 @@ The project has moved from a shallow procedural model to a **Deep Module** archi
      - Reinforcement and mission-target mobs now spawn with hostile AI state.
      - AP-starved hostile mobs enter recovery so they can keep attacking after `CombatTickSystem` refills AP.
      - `SafeZonePolicy` is now a shared World-domain contract consumed by alarm, reinforcement, and mob AI systems.
+   - Second vertical slice:
+     - Hostile mobs retain targets between ticks and can follow an existing target into an adjacent non-safe room.
+     - Hostile mobs drop their target instead of crossing into an effective safe zone.
+     - Pursuit uses World service room lookup and does not attack on the same tick as movement.
+     - Physical movement/navigation handlers sync active player ECS `PositionComponent` values after successful movement, so pursuit follows runtime movement instead of stale ECS location.
    - Deferred follow-ons:
-     - Room-to-room chase/follow behavior with safe-zone boundary drop.
+     - Multi-room chase/pathfinding and alert-expanded patrol routes.
      - Body-guarding/interception for jacked-in deckers.
      - RED-alert elite mob spawning.
      - Combat log/broadcast output for autonomous NPC attacks.
@@ -311,11 +316,11 @@ The project has moved from a shallow procedural model to a **Deep Module** archi
 
 ## 4. Immediate Next Steps (Phase 4.4+)
 
-**Phase 4.4A is committed; Phase 4.4B slice 1 is implementation-complete**
+**Phase 4.4A is committed; Phase 4.4B slice 2 is implementation-complete**
 
-1. Verify and commit the Phase 4.4B slice 1 implementation and documentation when ready.
-2. Follow-on after 4.4B slice 1:
-   - Mob aggro/follow system with safe-zone boundary enforcement
+1. Verify and commit the Phase 4.4B slice 2 implementation and documentation when ready.
+2. Follow-on after 4.4B slice 2:
+   - Multi-room mob chase/pathfinding and alert-expanded patrol routes
    - Elite mob spawn logic at RED alert
    - Body-guarding mechanic for jacked-in deckers
    - Hotkey picker UI from `CommandRegistry.getAll()`
