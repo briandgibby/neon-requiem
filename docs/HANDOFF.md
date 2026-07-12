@@ -290,16 +290,33 @@ The project has moved from a shallow procedural model to a **Deep Module** archi
      - Event-specific logic may enable alarm-like behavior, but civic-defense events should be able to spawn friendly/allied security NPCs who fight alongside recruited players rather than hostile law/security mobs.
      - Event lifecycle, faction allegiance, friendly NPC support, recruitment, participation rewards, and cleanup guarantees are deferred to later event-system phases.
 
+16. **Phase 4.4B — Physical Mob AI Targeting (SLICE 1 COMPLETE, 2026-07-12):**
+   - Plan: `docs/superpowers/plans/2026-07-12-phase-4.4b-mob-ai-targeting.md`
+   - First vertical slice:
+     - Added `MobAiSystem` as a heartbeat subscriber for hostile physical NPC behavior.
+     - Hostile NPCs select and attack valid player targets in the same non-safe physical room.
+     - Effective safe zones suppress automated mob attacks.
+     - Jacked-in deckers are targetable by `DeckerComponent.physicalRoomId`, keeping physical bodies vulnerable while the decker is in the Matrix.
+     - Mob attacks resolve through the existing `MoveDispatcher` and `AttackExecutor`.
+     - Reinforcement and mission-target mobs now spawn with hostile AI state.
+     - AP-starved hostile mobs enter recovery so they can keep attacking after `CombatTickSystem` refills AP.
+     - `SafeZonePolicy` is now a shared World-domain contract consumed by alarm, reinforcement, and mob AI systems.
+   - Deferred follow-ons:
+     - Room-to-room chase/follow behavior with safe-zone boundary drop.
+     - Body-guarding/interception for jacked-in deckers.
+     - RED-alert elite mob spawning.
+     - Combat log/broadcast output for autonomous NPC attacks.
+
 ---
 
 ## 4. Immediate Next Steps (Phase 4.4+)
 
-**Phase 4.4A is implementation-complete**
+**Phase 4.4A is committed; Phase 4.4B slice 1 is implementation-complete**
 
-1. Review and commit the Phase 4.4A implementation and documentation when ready.
-2. Follow-on after 4.4A:
-   - Elite mob spawn logic at RED alert
+1. Verify and commit the Phase 4.4B slice 1 implementation and documentation when ready.
+2. Follow-on after 4.4B slice 1:
    - Mob aggro/follow system with safe-zone boundary enforcement
+   - Elite mob spawn logic at RED alert
    - Body-guarding mechanic for jacked-in deckers
    - Hotkey picker UI from `CommandRegistry.getAll()`
 

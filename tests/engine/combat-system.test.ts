@@ -1,7 +1,7 @@
 import { EcsRegistry } from '../../src/engine/ecs/registry';
 import { CombatTickSystem } from '../../src/engine/ecs/systems/combat-tick-system';
 import { CombatReinforcementSystem } from '../../src/engine/ecs/systems/combat-reinforcement-system';
-import { ComponentTypes, CombatSessionComponent, CombatStatusComponent, ApComponent } from '../../src/engine/ecs/components';
+import { AiComponent, ComponentTypes, CombatSessionComponent, CombatStatusComponent, ApComponent } from '../../src/engine/ecs/components';
 import { COMMAND_AP_PENALTY } from '../../src/shared/constants';
 
 describe('Combat ECS Systems', () => {
@@ -98,6 +98,9 @@ describe('Combat ECS Systems', () => {
       expect(session?.turnsUntilReinforcements).toBeNull();
       expect(session?.alarmState).toBe('RED');
       expect(mockMobRepo.findBySlug).toHaveBeenCalledWith('security-guard');
+      const spawnedMobId = registry.getEntitiesWith([ComponentTypes.Ai]).find((entityId) => entityId !== sessionId);
+      const ai = registry.getComponent<AiComponent>(spawnedMobId!, ComponentTypes.Ai);
+      expect(ai?.state).toBe('hostile');
     });
 
     it('does not spawn reinforcements in effective safe zone', async () => {

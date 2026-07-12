@@ -35,6 +35,10 @@ export interface MovementResult {
   room?: RoomRecord;
 }
 
+export interface SafeZonePolicy {
+  isEffectiveSafeZone(roomId: string): Promise<boolean>;
+}
+
 export function isEffectiveSafeZone(
   room: Pick<RoomRecord, 'isSafeZone' | 'safeZoneOverrideActive'>,
 ): boolean {

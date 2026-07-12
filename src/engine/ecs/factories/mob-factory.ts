@@ -21,7 +21,8 @@ export class MobFactory {
   static createFromTemplate(
     registry: EcsRegistry, 
     template: MobTemplateRecord, 
-    roomId: string
+    roomId: string,
+    aiState: AiComponent['state'] = 'idle',
   ): EntityId {
     const entityId = registry.createEntity();
 
@@ -107,7 +108,7 @@ export class MobFactory {
     registry.addComponent(entityId, ComponentTypes.CombatStatus, combatStatus);
 
     const ai: AiComponent = {
-      state: 'idle',
+      state: aiState,
     };
     registry.addComponent(entityId, ComponentTypes.Ai, ai);
 

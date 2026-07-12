@@ -1,6 +1,7 @@
 import { CombatRepository } from './combat.repository';
 import { CharacterRepository } from '../character/character.repository';
 import { WorldRepository } from '../world/world.repository';
+import { SafeZonePolicy } from '../world/world.types';
 import { MobRepository } from './mob.repository';
 import { MagicService } from '../magic/magic.service';
 import { MatrixService } from '../matrix/matrix.service';
@@ -22,10 +23,6 @@ import {
 import { PlayerEntityFactory } from '../../engine/ecs/factories/player-entity-factory';
 
 import { PlayerSyncCoordinator } from '../../engine/player-sync-coordinator';
-
-export interface SafeZonePolicy {
-  isEffectiveSafeZone(roomId: string): Promise<boolean>;
-}
 
 export class CombatService implements Tickable {
   readonly name = 'CombatService';

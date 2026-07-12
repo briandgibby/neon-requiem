@@ -62,7 +62,8 @@ export class MissionService {
       const entityId = MobFactory.createFromTemplate(
         this.ecsRegistry,
         template as MobTemplateRecord,
-        room.id
+        room.id,
+        'hostile'
       );
 
       this.ecsRegistry.addComponent<MissionTargetComponent>(entityId, ComponentTypes.MissionTarget, {

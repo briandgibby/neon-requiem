@@ -3,10 +3,7 @@ import { Tickable } from '../../heartbeat';
 import { ComponentTypes, CombatSessionComponent } from '../components';
 import { MobRepository } from '../../../domains/combat/mob.repository';
 import { MobFactory } from '../factories/mob-factory';
-
-export interface SafeZonePolicy {
-  isEffectiveSafeZone(roomId: string): Promise<boolean>;
-}
+import { SafeZonePolicy } from '../../../domains/world/world.types';
 
 export class CombatReinforcementSystem implements Tickable {
   readonly name = 'ecs_combat_reinforcement_system';
@@ -43,7 +40,7 @@ export class CombatReinforcementSystem implements Tickable {
     const template = await this.mobRepo.findBySlug('security-guard');
     if (!template) return;
 
-    const entityId = MobFactory.createFromTemplate(this.registry, template, session.roomId);
+    const entityId = MobFactory.createFromTemplate(this.registry, template, session.roomId, 'hostile');
 
     // Link to session
     const status = this.registry.getComponent<any>(entityId, ComponentTypes.CombatStatus);
