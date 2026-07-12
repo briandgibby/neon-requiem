@@ -68,9 +68,10 @@ export class MobAiSystem implements Tickable {
       }
 
       ai.targetEntityId = targetId;
+      const attackTargetId = this.findGuardForTarget(targetId, position.roomId) ?? targetId;
 
       try {
-        await this.moveDispatcher.dispatch('attack', mobId, targetId, { registry: this.registry });
+        await this.moveDispatcher.dispatch('attack', mobId, attackTargetId, { registry: this.registry });
       } catch (_err) {
         this.startRecoveryIfSpent(status, mobId);
         // AI action failures should not stop the rest of the heartbeat.
@@ -167,6 +168,32 @@ export class MobAiSystem implements Tickable {
 
     const decker = this.registry.getComponent<DeckerComponent>(entityId, ComponentTypes.Decker);
     return decker?.physicalRoomId || position.roomId;
+  }
+
+  private findGuardForTarget(targetId: EntityId, roomId: string): EntityId | undefined {
+    const targetDecker = this.registry.getComponent<DeckerComponent>(targetId, ComponentTypes.Decker);
+    if (!targetDecker) return undefined;
+
+    const guardIds = this.registry.getEntitiesWith([
+      ComponentTypes.PlayerId,
+      ComponentTypes.Position,
+      ComponentTypes.Health,
+      ComponentTypes.CombatStatus,
+    ]);
+
+    return guardIds.find((guardId) => {
+      if (guardId === targetId) return false;
+
+      const status = this.registry.getComponent<CombatStatusComponent>(guardId, ComponentTypes.CombatStatus);
+      const health = this.registry.getComponent<HealthComponent>(guardId, ComponentTypes.Health);
+      const guardRoomId = this.getTargetPhysicalRoomId(guardId);
+
+      return status?.state === 'guarding'
+        && status.guardedEntityId === targetId
+        && !!health
+        && health.current > 0
+        && guardRoomId === roomId;
+    });
   }
 
   private startRecoveryIfSpent(status: CombatStatusComponent, mobId: EntityId): void {

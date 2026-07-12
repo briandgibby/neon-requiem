@@ -74,6 +74,22 @@ function addPhysicalPlayer(registry: EcsRegistry, roomId: string): string {
   return entityId;
 }
 
+function addBodyGuard(registry: EcsRegistry, roomId: string, guardedEntityId: string): string {
+  const entityId = addPhysicalPlayer(registry, roomId);
+  registry.addComponent<ApComponent>(entityId, ComponentTypes.Ap, {
+    current: 6,
+    max: 6,
+    lastRegenAt: 0,
+    recoveryTicks: 0,
+  });
+  registry.addComponent<CombatStatusComponent>(entityId, ComponentTypes.CombatStatus, {
+    state: 'guarding',
+    isPetActive: false,
+    guardedEntityId,
+  });
+  return entityId;
+}
+
 function addHostileMob(registry: EcsRegistry, roomId: string): string {
   const entityId = registry.createEntity();
   registry.addComponent<NpcIdComponent>(entityId, ComponentTypes.NpcId, { mobId: entityId });
@@ -174,6 +190,33 @@ describe('MobAiSystem', () => {
 
     const deckerHealth = registry.getComponent<HealthComponent>(deckerId, ComponentTypes.Health);
     expect(deckerHealth?.current).toBeLessThan(100);
+  });
+
+  it('redirects attacks on a jacked-in decker body to a body guard in the same physical room', async () => {
+    jest.spyOn(Math, 'random').mockReturnValue(0.99);
+    const registry = new EcsRegistry();
+    const worldPolicy = createWorldPolicy();
+    const system = new MobAiSystem(registry, createDispatcher(), worldPolicy);
+
+    const deckerId = addPhysicalPlayer(registry, 'matrix-node-1');
+    registry.addComponent<DeckerComponent>(deckerId, ComponentTypes.Decker, {
+      activeNodeEntityId: 'matrix-node-1',
+      physicalRoomId: 'room-1',
+      attack: 5,
+      sleaze: 5,
+      firewall: 5,
+      biofeedbackBuffer: 5,
+      overwatchScore: 0,
+    });
+    const guardId = addBodyGuard(registry, 'room-1', deckerId);
+    addHostileMob(registry, 'room-1');
+
+    await system.onTick(1);
+
+    const deckerHealth = registry.getComponent<HealthComponent>(deckerId, ComponentTypes.Health);
+    const guardHealth = registry.getComponent<HealthComponent>(guardId, ComponentTypes.Health);
+    expect(deckerHealth?.current).toBe(100);
+    expect(guardHealth?.current).toBeLessThan(100);
   });
 
   it('does not interrupt mob AP recovery when it cannot attack yet', async () => {

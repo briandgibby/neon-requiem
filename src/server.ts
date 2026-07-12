@@ -19,6 +19,7 @@ import { InstanceRepository } from './domains/mission/instance.repository';
 import { InstanceCleanupSystem } from './engine/ecs/systems/instance-cleanup-system';
 import { MoveDispatcher } from './engine/ecs/combat/move-dispatcher';
 import { AttackExecutor } from './engine/ecs/combat/moves/attack-executor';
+import { GuardExecutor } from './engine/ecs/combat/moves/guard-executor';
 import { MatrixBruteExecutor } from './engine/ecs/combat/moves/matrix-brute-executor';
 import { MatrixSleazeExecutor } from './engine/ecs/combat/moves/matrix-sleaze-executor';
 import { MatrixDataSpikeExecutor } from './engine/ecs/combat/moves/matrix-data-spike-executor';
@@ -117,6 +118,7 @@ async function bootstrap() {
 
   const moveDispatcher = new MoveDispatcher();
   moveDispatcher.register(new AttackExecutor());
+  moveDispatcher.register(new GuardExecutor());
   moveDispatcher.register(new MatrixBruteExecutor());
   moveDispatcher.register(new MatrixSleazeExecutor());
   moveDispatcher.register(new MatrixDataSpikeExecutor());

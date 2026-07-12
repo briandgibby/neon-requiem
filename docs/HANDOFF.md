@@ -327,16 +327,28 @@ The project has moved from a shallow procedural model to a **Deep Module** archi
      - Weighted selection among multiple elite archetypes.
      - RED-alert elite spawns across every active/player-occupied instance room.
 
+18. **Phase 4.4D — Body-Guarding for Jacked-In Deckers (COMPLETE, 2026-07-12):**
+   - Plan: `docs/superpowers/plans/2026-07-12-phase-4.4d-body-guarding.md`
+   - Implemented:
+     - Added `GuardExecutor` for the existing `guard` combat move.
+     - `guard` marks the actor as guarding a specific same-room target.
+     - Guarding a jacked-in decker resolves the target's physical body room via `DeckerComponent.physicalRoomId`.
+     - `CombatStatusComponent` now records `guardedEntityId`.
+     - `MobAiSystem` redirects hostile attacks aimed at a jacked-in decker's physical body to a living same-room guard.
+   - Deferred follow-ons:
+     - Guard duration/expiration rules.
+     - Multiple-guard priority ordering.
+     - Combat log/broadcast output for interception.
+
 ---
 
 ## 4. Immediate Next Steps (Phase 4.4+)
 
-**Phase 4.4A and 4.4B are committed; Phase 4.4C is implementation-complete**
+**Phase 4.4A through 4.4C are committed; Phase 4.4D is implementation-complete**
 
-1. Verify and commit the Phase 4.4C implementation and documentation when ready.
-2. Follow-on after 4.4C:
+1. Verify and commit the Phase 4.4D implementation and documentation when ready.
+2. Follow-on after 4.4D:
    - Multi-room mob chase/pathfinding and alert-expanded patrol routes
-   - Body-guarding mechanic for jacked-in deckers
    - Hotkey picker UI from `CommandRegistry.getAll()`
 
 **Remaining carry-forward items:**

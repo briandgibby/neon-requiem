@@ -72,6 +72,7 @@ export interface CombatStatusComponent {
   state: 'idle' | 'engaged' | 'recovering' | 'guarding';
   isPetActive: boolean;
   sessionId?: EntityId;
+  guardedEntityId?: EntityId;
 }
 
 export interface CombatSessionComponent {
