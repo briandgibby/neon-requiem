@@ -357,16 +357,31 @@ The project has moved from a shallow procedural model to a **Deep Module** archi
      - Entity-aware argument dropdowns for commands such as `spike <ice-id>`.
      - Drag/drop or keyboard remapping UI.
 
+20. **Phase 4.4E — Alert-Expanded Patrol Routes (COMPLETE, 2026-07-12):**
+   - Plan: `docs/superpowers/plans/2026-07-12-alert-expanded-patrol-routes.md`
+   - Implemented:
+     - Added `AlertPatrolSystem` for NPCs with `AiComponent.state = 'patrol'`.
+     - GREEN sessions keep patrol guards in fixed positions.
+     - YELLOW sessions pull patrols one room per tick along authored room-id `patrolRoute` values toward the alerted room.
+     - RED sessions can pull patrols one room per tick through connected non-safe rooms without an authored route, bounded to eight room transitions per heartbeat tick.
+     - Patrols do not start in or cross effective safe-zone rooms.
+     - Patrols become `hostile` after reaching an alerted room so `MobAiSystem` can handle attacks.
+     - Room and safe-zone lookup failures are reported through diagnostics while the affected patrol is isolated from the rest of the heartbeat.
+   - Deferred follow-ons:
+     - MissionInstance-wide alert source integration beyond ECS `CombatSessionComponent`.
+     - Patrol broadcast/combat log output.
+     - Persisted patrol definitions in world content.
+
 ---
 
 ## 4. Immediate Next Steps (Phase 4.4+)
 
 **Phase 4.4A through 4.4D are committed; Phase 4.4B Slice 3 multi-room pursuit is verified/complete**
 
-1. Confirm the current branch includes the Phase 4.4B Slice 3 multi-room pursuit commit.
-2. Follow-on after multi-room pursuit:
-   - Alert-expanded patrol routes for YELLOW/RED alert
+1. Confirm the current branch includes the Phase 4.4E alert patrol commit.
+2. Remaining follow-ons:
    - Persisted hotkey mappings and entity-aware command argument pickers
+   - MissionInstance-wide alert source integration for patrols
 
 **Remaining carry-forward items:**
 - Snapshot history/admin tooling — no admin-facing snapshot history view yet

@@ -10,6 +10,7 @@ import { EcsRegistry } from './engine/ecs/registry';
 import { RegenSystem } from './engine/ecs/systems/regen-system';
 import { CombatTickSystem } from './engine/ecs/systems/combat-tick-system';
 import { CombatReinforcementSystem } from './engine/ecs/systems/combat-reinforcement-system';
+import { AlertPatrolSystem } from './engine/ecs/systems/alert-patrol-system';
 import { MobAiSystem } from './engine/ecs/systems/mob-ai-system';
 import { MatrixTickSystem } from './engine/ecs/systems/matrix-tick-system';
 import { IceAiSystem } from './engine/ecs/systems/ice-ai-system';
@@ -185,6 +186,7 @@ async function bootstrap() {
   heartbeat.subscribe(new RegenSystem(ecsRegistry));
   heartbeat.subscribe(new CombatTickSystem(ecsRegistry));
   heartbeat.subscribe(new CombatReinforcementSystem(ecsRegistry, combatService, worldService));
+  heartbeat.subscribe(new AlertPatrolSystem(ecsRegistry, worldService, app.log));
   heartbeat.subscribe(new MobAiSystem(ecsRegistry, moveDispatcher, worldService));
   heartbeat.subscribe(new MatrixTickSystem(ecsRegistry, matrixRepo, instanceRepo));
   heartbeat.subscribe(new IceAiSystem(ecsRegistry));
