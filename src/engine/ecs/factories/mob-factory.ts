@@ -14,7 +14,7 @@ import {
   NpcIdComponent,
   MobTemplateComponent
 } from '../components';
-import { MobTemplateRecord } from '../../../domains/combat/mob.repository';
+import { MobTemplateRecord } from '../../../domains/combat/combat.types';
 import { MAX_AP } from '../../../shared/constants';
 
 export class MobFactory {

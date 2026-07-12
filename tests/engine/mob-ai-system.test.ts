@@ -25,9 +25,9 @@ function createDispatcher(): MoveDispatcher {
 
 function createWorldPolicy(safeRooms: string[] = []) {
   const rooms = new Map([
-    ['room-1', { id: 'room-1', slug: 'room-one', exits: { east: 'room-two', north: 'safe-room' } }],
-    ['room-2', { id: 'room-2', slug: 'room-two', exits: { west: 'room-one' } }],
-    ['safe-room', { id: 'safe-room', slug: 'safe-room', exits: { south: 'room-one' } }],
+    ['room-1', { id: 'room-1', slug: 'room-one', factionOwner: null, exits: { east: 'room-two', north: 'safe-room' } }],
+    ['room-2', { id: 'room-2', slug: 'room-two', factionOwner: null, exits: { west: 'room-one' } }],
+    ['safe-room', { id: 'safe-room', slug: 'safe-room', factionOwner: null, exits: { south: 'room-one' } }],
   ]);
 
   return {

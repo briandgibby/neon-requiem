@@ -52,6 +52,30 @@ export type SecurityAlarmResult =
   | { triggered: true }
   | { triggered: false; reason: 'safe_zone' };
 
+export interface MobTemplateRecord {
+  id: string;
+  slug: string;
+  name: string;
+  level: number;
+  body: number;
+  agility: number;
+  dexterity: number;
+  strength: number;
+  logic: number;
+  intuition: number;
+  willpower: number;
+  charisma: number;
+  maxHp: number;
+  maxAp: number;
+  armorValue: number;
+  masteryCQC: number;
+  masteryPistol: number;
+  masteryRifle: number;
+  masteryAutomatic: number;
+  eliteOnly?: boolean;
+  corporationId?: string | null;
+}
+
 export type HitType = 'crit' | 'solid' | 'glancing' | 'dodge';
 export type AbsorbType = 'none' | 'some' | 'most';
 

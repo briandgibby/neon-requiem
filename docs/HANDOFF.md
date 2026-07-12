@@ -312,16 +312,30 @@ The project has moved from a shallow procedural model to a **Deep Module** archi
      - RED-alert elite mob spawning.
      - Combat log/broadcast output for autonomous NPC attacks.
 
+17. **Phase 4.4C — RED-Alert Elite Spawns (COMPLETE, 2026-07-12):**
+   - Plan: `docs/superpowers/plans/2026-07-12-phase-4.4c-red-alert-elite-spawns.md`
+   - Implemented:
+     - `MobRepository.findEliteByCorporation(corporationId)` looks up elite-only templates by corporation behind the Combat domain service seam.
+     - `CombatReinforcementSystem` reads `Room.factionOwner` through the World room lookup when a RED-alert reinforcement timer matures.
+     - RED-alert reinforcement resolution spawns ordinary security plus a matching elite template when one exists.
+     - Non-RED reinforcement resolution does not query or spawn elite templates.
+     - Missing ordinary security guard templates do not produce elite-only fallback spawns.
+     - RED-alert room ownership lookup failures surface for retry/diagnosis instead of silently hiding bad ownership data.
+     - Elite mobs spawn with hostile AI state and therefore participate in the Phase 4.4B mob AI loop.
+   - Deferred follow-ons:
+     - First-class corporation/facility ownership on `MissionInstance`.
+     - Weighted selection among multiple elite archetypes.
+     - RED-alert elite spawns across every active/player-occupied instance room.
+
 ---
 
 ## 4. Immediate Next Steps (Phase 4.4+)
 
-**Phase 4.4A is committed; Phase 4.4B slice 2 is implementation-complete**
+**Phase 4.4A and 4.4B are committed; Phase 4.4C is implementation-complete**
 
-1. Verify and commit the Phase 4.4B slice 2 implementation and documentation when ready.
-2. Follow-on after 4.4B slice 2:
+1. Verify and commit the Phase 4.4C implementation and documentation when ready.
+2. Follow-on after 4.4C:
    - Multi-room mob chase/pathfinding and alert-expanded patrol routes
-   - Elite mob spawn logic at RED alert
    - Body-guarding mechanic for jacked-in deckers
    - Hotkey picker UI from `CommandRegistry.getAll()`
 

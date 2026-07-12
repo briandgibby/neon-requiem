@@ -42,7 +42,7 @@ export interface SafeZonePolicy {
 export type RoomExitMap = Partial<Record<Direction, string>>;
 
 export interface RoomLookup {
-  getRoom(slugOrId: string): Promise<Pick<RoomRecord, 'id' | 'slug'> & { exits: RoomExitMap | null }>;
+  getRoom(slugOrId: string): Promise<Pick<RoomRecord, 'id' | 'slug' | 'factionOwner'> & { exits: RoomExitMap | null }>;
 }
 
 export function isEffectiveSafeZone(

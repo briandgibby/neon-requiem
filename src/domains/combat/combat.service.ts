@@ -5,7 +5,7 @@ import { SafeZonePolicy } from '../world/world.types';
 import { MobRepository } from './mob.repository';
 import { MagicService } from '../magic/magic.service';
 import { MatrixService } from '../matrix/matrix.service';
-import { MoveInput, SecurityAlarmResult } from './combat.types';
+import { MobTemplateRecord, MoveInput, SecurityAlarmResult } from './combat.types';
 import { 
   MAX_AP, 
 } from '../../shared/constants';
@@ -89,6 +89,14 @@ export class CombatService implements Tickable {
     session.turnsUntilReinforcements = 1;
 
     return { triggered: true };
+  }
+
+  async findMobTemplateBySlug(slug: string): Promise<MobTemplateRecord | null> {
+    return this.mobRepo.findBySlug(slug);
+  }
+
+  async findEliteMobTemplateByCorporation(corporationId: string): Promise<MobTemplateRecord | null> {
+    return this.mobRepo.findEliteByCorporation(corporationId);
   }
 
   async joinCombat(characterId: string, accountId: string, roomId: string): Promise<void> {
