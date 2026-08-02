@@ -4,6 +4,7 @@ import { AuthService } from '../domains/auth/auth.service';
 import { UnauthorizedError } from '../shared/errors';
 import { RoomPresence, PresenceClient, RoomOccupant } from './room-presence';
 import { PlayerSyncCoordinator } from './player-sync-coordinator';
+import { encodeCharacterSelector } from '../shared/character-selector';
 
 export interface ConnectedClient {
   socket: Socket;
@@ -99,6 +100,7 @@ export class SocketHub {
         socket.to(client.roomId).emit('player_entered', {
           characterId: client.characterId,
           name: client.characterName,
+          selector: encodeCharacterSelector(client.characterId),
         });
         this.emitRoomOccupants(client.roomId);
       }
@@ -111,6 +113,7 @@ export class SocketHub {
         socket.to(move.previousRoomId).emit('player_left', {
           characterId: move.characterId,
           name: move.characterName,
+          selector: encodeCharacterSelector(move.characterId),
         });
         this.emitRoomOccupants(move.previousRoomId);
 
@@ -118,6 +121,7 @@ export class SocketHub {
         socket.to(move.nextRoomId).emit('player_entered', {
           characterId: move.characterId,
           name: move.characterName,
+          selector: encodeCharacterSelector(move.characterId),
         });
         this.emitRoomOccupants(move.nextRoomId);
       }
@@ -129,6 +133,7 @@ export class SocketHub {
       this.io.to(leave.previousRoomId).emit('player_left', {
         characterId: leave.characterId,
         name: leave.characterName,
+        selector: encodeCharacterSelector(leave.characterId),
       });
       this.emitRoomOccupants(leave.previousRoomId);
     });

@@ -1,17 +1,9 @@
 import { PrismaClient } from '@prisma/client';
 
-export interface PatrolDefinitionRecord {
-  id: string;
-  slug: string;
-  startRoomSlug: string;
-  routeRoomSlugs: unknown;
-  mobTemplateId: string;
-}
-
 export class PatrolDefinitionRepository {
   constructor(private readonly db: PrismaClient) {}
 
-  async listEnabled(): Promise<PatrolDefinitionRecord[]> {
+  async listEnabled() {
     const definitions = await this.db.patrolDefinition.findMany({
       where: { enabled: true },
       select: {

@@ -1,8 +1,10 @@
 import { EventEmitter } from 'events';
+import { encodeCharacterSelector } from '../shared/character-selector';
 
 export interface RoomOccupant {
   characterId: string;
   name: string;
+  selector: string;
 }
 
 export interface PresenceLeaveResult {
@@ -117,6 +119,7 @@ export class RoomPresence extends EventEmitter {
       .map((client) => ({
         characterId: client.characterId,
         name: client.characterName,
+        selector: encodeCharacterSelector(client.characterId),
       }));
   }
 

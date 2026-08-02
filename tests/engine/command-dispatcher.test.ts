@@ -14,6 +14,7 @@ import { BruteHandler } from '../../src/engine/commands/brute.handler';
 import { SleazeHandler } from '../../src/engine/commands/sleaze.handler';
 import { DataSpikeHandler } from '../../src/engine/commands/spike.handler';
 import { NavigateHandler } from '../../src/engine/commands/navigate.handler';
+import { encodeCharacterSelector } from '../../src/shared/character-selector';
 
 function buildMocks() {
   const worldService = {
@@ -147,7 +148,10 @@ describe('CommandDispatcher', () => {
     socketHub.getSelectedClient.mockReturnValue({ characterId: 'char-1', accountId: 'acc-1', characterName: 'Fox', roomId: 'room-1' });
     socketHub.findCharacterById.mockReturnValue({ socketId: 'socket-target', name: 'Chrome Fox' });
 
-    await dispatcher.dispatch(output, 'tell @neon-requiem-character-selector:char-2 meet at the clinic');
+    await dispatcher.dispatch(
+      output,
+      `tell ${encodeCharacterSelector('char-2')} meet at the clinic`,
+    );
 
     expect(socketHub.findCharacterById).toHaveBeenCalledWith('char-2');
     expect(socketHub.sendToSocket).toHaveBeenCalledWith('socket-target', 'chat_message', {

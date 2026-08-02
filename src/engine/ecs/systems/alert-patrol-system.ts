@@ -9,19 +9,28 @@ import {
   PositionComponent,
 } from '../components';
 import { RoomLookup, SafeZonePolicy } from '../../../domains/world/world.types';
-import type { InstanceAlertAuthority } from '../../../domains/mission/instance-alert.service';
+import {
+  instanceAlertPriority,
+  type InstanceAlertSynchronization,
+} from '../../../domains/mission/instance-alert.service';
+import type { ActiveInstanceAlertLevel } from '../../../domains/mission/mission.types';
 import { RoomEventPublisher } from '../../room-event-publisher';
 
 interface AlertPatrolWorldPolicy extends SafeZonePolicy, RoomLookup {}
 type AlertPatrolRoom = Awaited<ReturnType<RoomLookup['getRoom']>>;
 
-type ActiveAlertSession = Pick<CombatSessionComponent, 'roomId' | 'alarmState'> & { instanceId?: string };
+type ActiveAlertSession = {
+  roomId: string;
+  alarmState: ActiveInstanceAlertLevel;
+  instanceId?: string;
+};
 interface AlertPatrolDiagnostics {
   warn(obj: unknown, msg: string): void;
 }
-interface InstanceAlertSource extends InstanceAlertAuthority {
-  findActiveInstanceAlertSources(): Promise<Array<ActiveAlertSession & { instanceId: string }>>;
-}
+type InstanceAlertSource = Pick<
+  InstanceAlertSynchronization,
+  'ensureAlertFromRoom' | 'findActiveInstanceAlertSources'
+>;
 
 const MAX_RED_PATROL_SEARCH_DEPTH = 8;
 
@@ -75,8 +84,9 @@ export class AlertPatrolSystem implements Tickable {
     const sessionIds = this.registry.getEntitiesWith([ComponentTypes.CombatSession]);
     const ecsSessions: ActiveAlertSession[] = sessionIds
       .map((sessionId) => this.registry.getComponent<CombatSessionComponent>(sessionId, ComponentTypes.CombatSession))
-      .filter((session): session is CombatSessionComponent => !!session && session.alarmState !== 'GREEN')
-      .map((session) => ({ roomId: session.roomId, alarmState: session.alarmState }));
+      .flatMap((session) => !session || session.alarmState === 'GREEN'
+        ? []
+        : [{ roomId: session.roomId, alarmState: session.alarmState }]);
     const sessions: ActiveAlertSession[] = [];
 
     if (this.instanceAlerts) {
@@ -102,8 +112,8 @@ export class AlertPatrolSystem implements Tickable {
     const strongestByRoom = new Map<string, ActiveAlertSession>();
     for (const session of sessions) {
       const current = strongestByRoom.get(session.roomId);
-      const sessionPriority = this.alertPriority(session.alarmState);
-      const currentPriority = current ? this.alertPriority(current.alarmState) : -1;
+      const sessionPriority = instanceAlertPriority(session.alarmState);
+      const currentPriority = current ? instanceAlertPriority(current.alarmState) : -1;
       if (
         !current
         || sessionPriority > currentPriority
@@ -114,13 +124,7 @@ export class AlertPatrolSystem implements Tickable {
     }
 
     return [...strongestByRoom.values()]
-      .sort((a, b) => this.alertPriority(b.alarmState) - this.alertPriority(a.alarmState));
-  }
-
-  private alertPriority(alarmState: CombatSessionComponent['alarmState']): number {
-    if (alarmState === 'RED') return 2;
-    if (alarmState === 'YELLOW') return 1;
-    return 0;
+      .sort((a, b) => instanceAlertPriority(b.alarmState) - instanceAlertPriority(a.alarmState));
   }
 
   private async moveTowardFirstReachableAlert(

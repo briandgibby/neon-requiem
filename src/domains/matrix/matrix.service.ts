@@ -1,4 +1,5 @@
 import { MatrixRepository } from './matrix.repository';
+import type { HydratedMatrixNode } from './matrix.repository';
 import { NotFoundError, ValidationError } from '../../shared/errors';
 import { MatrixHackingResult, DataSpikeResult, IceAttackResult, AlertLevel, RepairResult } from './matrix.types';
 import { EcsRegistry } from '../../engine/ecs/registry';
@@ -114,9 +115,7 @@ export class MatrixService {
     };
   }
 
-  private getPersistedNodeView(
-    node: NonNullable<Awaited<ReturnType<MatrixRepository['findNodeById']>>>
-  ): MatrixNodeView {
+  private getPersistedNodeView(node: HydratedMatrixNode): MatrixNodeView {
     return {
       id: node.id,
       nodeId: node.id,
@@ -130,14 +129,17 @@ export class MatrixService {
         entityId: ice.id,
         name: ice.name,
         slug: ice.slug,
-        type: ice.type as IceComponent['type'],
+        type: ice.type,
         currentHp: ice.currentHp,
         maxHp: ice.hp,
       })),
     };
   }
 
-  private spawnIceForNode(nodeEntityId: string, activeIC: any[] = []): void {
+  private spawnIceForNode(
+    nodeEntityId: string,
+    activeIC: HydratedMatrixNode['activeIC'] = [],
+  ): void {
     const existingIceIds = this.ecsRegistry.getEntitiesWith([ComponentTypes.Ice, ComponentTypes.Position]);
     const existingIceByDbId = new Set(
       existingIceIds.flatMap((iceEntityId) => {

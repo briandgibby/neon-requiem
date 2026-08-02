@@ -2,20 +2,11 @@ import { EcsRegistry } from '../registry';
 import { Tickable } from '../../heartbeat';
 import { ComponentTypes, MatrixNodeComponent } from '../components';
 import { MatrixRepository } from '../../../domains/matrix/matrix.repository';
-import type { InstanceAlertAuthority } from '../../../domains/mission/instance-alert.service';
-
-interface InstanceAlertSyncSource extends InstanceAlertAuthority {
-  findInstanceByRoomId(roomId: string): Promise<{
-    id: string;
-    alertLevel: string;
-    alertSourceRoomId?: string | null;
-    status?: string;
-  } | null>;
-  findActiveInstanceAlertSources?(): Promise<Array<{
-    instanceId: string;
-    alarmState: 'YELLOW' | 'RED';
-  }>>;
-}
+import {
+  instanceAlertPriority,
+  type InstanceAlertSynchronization,
+  type InstanceAlertView,
+} from '../../../domains/mission/instance-alert.service';
 
 export class MatrixTickSystem implements Tickable {
   readonly name = 'ecs_matrix_tick_system';
@@ -24,7 +15,7 @@ export class MatrixTickSystem implements Tickable {
   constructor(
     private readonly registry: EcsRegistry,
     private readonly matrixRepo: MatrixRepository,
-    private readonly instanceRepo?: InstanceAlertSyncSource,
+    private readonly instanceAlerts?: InstanceAlertSynchronization,
   ) {}
 
   async onTick(_tickCount: number): Promise<void> {
@@ -38,8 +29,8 @@ export class MatrixTickSystem implements Tickable {
       const instance = await this.findLinkedInstance(node);
       if (instance === undefined) continue;
       if (instance) {
-        const nodePriority = this.alertPriority(node.alertLevel);
-        const instancePriority = this.alertPriority(instance.alertLevel);
+        const nodePriority = instanceAlertPriority(node.alertLevel);
+        const instancePriority = instanceAlertPriority(instance.alertLevel);
 
         if (instancePriority > nodePriority) {
           try {
@@ -50,10 +41,11 @@ export class MatrixTickSystem implements Tickable {
           }
         } else if (
           node.linkedRoomId
+          && node.alertLevel !== 'GREEN'
           && (nodePriority > instancePriority || (nodePriority > 0 && !instance.alertSourceRoomId))
         ) {
           try {
-            await this.instanceRepo!.ensureAlertFromRoom(node.linkedRoomId, node.alertLevel);
+            await this.instanceAlerts!.ensureAlertFromRoom(node.linkedRoomId, node.alertLevel);
           } catch (_err) {
             // Non-fatal; the next tick retries synchronization.
           }
@@ -73,11 +65,11 @@ export class MatrixTickSystem implements Tickable {
   }
 
   private async reconcilePersistedInstanceNodes(): Promise<void> {
-    if (!this.instanceRepo?.findActiveInstanceAlertSources) return;
+    if (!this.instanceAlerts) return;
 
     let alerts: Array<{ instanceId: string; alarmState: 'YELLOW' | 'RED' }>;
     try {
-      alerts = await this.instanceRepo.findActiveInstanceAlertSources();
+      alerts = await this.instanceAlerts.findActiveInstanceAlertSources();
     } catch (_err) {
       return;
     }
@@ -93,20 +85,12 @@ export class MatrixTickSystem implements Tickable {
 
   private async findLinkedInstance(
     node: MatrixNodeComponent,
-  ): Promise<{ id: string; alertLevel: string; alertSourceRoomId?: string | null; status?: string } | null | undefined> {
-    if (!this.instanceRepo || !node.linkedRoomId) return null;
+  ): Promise<InstanceAlertView | null | undefined> {
+    if (!this.instanceAlerts || !node.linkedRoomId) return null;
     try {
-      const instance = await this.instanceRepo.findInstanceByRoomId(node.linkedRoomId);
-      if (instance?.status && instance.status !== 'ACTIVE') return null;
-      return instance;
+      return await this.instanceAlerts.findActiveAlertForRoom(node.linkedRoomId);
     } catch (_err) {
       return undefined;
     }
-  }
-
-  private alertPriority(level: string): number {
-    if (level === 'RED') return 2;
-    if (level === 'YELLOW') return 1;
-    return 0;
   }
 }

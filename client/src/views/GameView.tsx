@@ -56,6 +56,7 @@ const EMPTY_HOTKEYS: HotkeyMap = {};
 interface RoomOccupant {
   characterId: string;
   name: string;
+  selector: string;
 }
 
 interface ChatMessage {
@@ -445,7 +446,7 @@ export const GameView: React.FC<GameViewProps> = ({ token, character, onLogout }
               occupant: roomOccupants
                 .filter((occupant) => occupant.characterId !== charData.id)
                 .map((occupant) => ({
-                  value: `@neon-requiem-character-selector:${occupant.characterId}`,
+                  value: occupant.selector,
                   label: occupant.name,
                 })),
             }}

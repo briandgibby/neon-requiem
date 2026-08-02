@@ -1,7 +1,6 @@
 import { CommandContext, CommandHandler } from '../command-registry';
 import { SocketHub } from '../socket-hub';
-
-const CHARACTER_SELECTOR_PREFIX = '@neon-requiem-character-selector:';
+import { decodeCharacterSelector } from '../../shared/character-selector';
 
 export class TellHandler implements CommandHandler {
   readonly aliases = ['tell'] as const;
@@ -25,8 +24,9 @@ export class TellHandler implements CommandHandler {
 
     let targetName = targetSelector;
     let targetSocketId: string | null;
-    if (targetSelector.startsWith(CHARACTER_SELECTOR_PREFIX)) {
-      const target = this.socketHub.findCharacterById(targetSelector.slice(CHARACTER_SELECTOR_PREFIX.length));
+    const targetCharacterId = decodeCharacterSelector(targetSelector);
+    if (targetCharacterId !== null) {
+      const target = this.socketHub.findCharacterById(targetCharacterId);
       targetName = target?.name ?? 'That character';
       targetSocketId = target?.socketId ?? null;
     } else {

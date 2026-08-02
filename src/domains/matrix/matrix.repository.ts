@@ -1,20 +1,47 @@
 import { PrismaClient } from '@prisma/client';
+import type { Prisma } from '@prisma/client';
+import { z } from 'zod';
+
+type PersistedMatrixNode = Prisma.MatrixNodeGetPayload<{
+  include: { activeIC: true };
+}>;
+type PersistedMatrixIce = PersistedMatrixNode['activeIC'][number];
+
+const matrixIceTypeSchema = z.enum(['WHITE', 'GRAY', 'BLACK']);
+
+export type HydratedMatrixNode = Omit<PersistedMatrixNode, 'activeIC'> & {
+  activeIC: Array<Omit<PersistedMatrixIce, 'type'> & {
+    type: z.infer<typeof matrixIceTypeSchema>;
+  }>;
+};
+
+function hydrateMatrixNode(node: PersistedMatrixNode): HydratedMatrixNode {
+  return {
+    ...node,
+    activeIC: node.activeIC.map((ice) => ({
+      ...ice,
+      type: matrixIceTypeSchema.parse(ice.type),
+    })),
+  };
+}
 
 export class MatrixRepository {
   constructor(private readonly db: PrismaClient) {}
 
-  async findNodeByRoomId(roomId: string) {
-    return this.db.matrixNode.findUnique({
+  async findNodeByRoomId(roomId: string): Promise<HydratedMatrixNode | null> {
+    const node = await this.db.matrixNode.findUnique({
       where: { roomId },
       include: { activeIC: true }
     });
+    return node ? hydrateMatrixNode(node) : null;
   }
 
-  async findNodeById(id: string) {
-    return this.db.matrixNode.findUnique({
+  async findNodeById(id: string): Promise<HydratedMatrixNode | null> {
+    const node = await this.db.matrixNode.findUnique({
       where: { id },
       include: { activeIC: true }
     });
+    return node ? hydrateMatrixNode(node) : null;
   }
 
   async updateNodeAlert(nodeId: string, alertLevel: string) {

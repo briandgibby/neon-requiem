@@ -1,9 +1,20 @@
-import type { PatrolDefinitionSource, PersistedPatrolDefinition } from '../domains/world/patrol-definition.service';
 import type { CombatService } from '../domains/combat/combat.service';
 import { RoomLookup, SafeZonePolicy } from '../domains/world/world.types';
 import { AiComponent, ComponentTypes, PatrolDefinitionComponent } from './ecs/components';
 import { MobFactory } from './ecs/factories/mob-factory';
 import { EcsRegistry } from './ecs/registry';
+
+export interface PersistedPatrolDefinition {
+  id: string;
+  slug: string;
+  startRoomSlug: string;
+  routeRoomSlugs: unknown;
+  mobTemplateId: string;
+}
+
+export interface PatrolDefinitionSource {
+  listEnabled(): Promise<PersistedPatrolDefinition[]>;
+}
 
 interface PatrolWorldPolicy extends RoomLookup, SafeZonePolicy {}
 type PatrolRoom = Awaited<ReturnType<RoomLookup['getRoom']>>;

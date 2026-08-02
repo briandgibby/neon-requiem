@@ -2,6 +2,8 @@ import { MissionTemplate, ActiveMission } from '@prisma/client';
 
 export type MissionType = 'RETRIEVAL' | 'EXTRACTION' | 'COURIER' | 'SABOTAGE' | 'MATRIX' | 'ASSASSINATION';
 export type MissionStatus = 'ACTIVE' | 'COMPLETED' | 'FAILED' | 'SCRUBBED';
+export type InstanceAlertLevel = 'GREEN' | 'YELLOW' | 'RED';
+export type ActiveInstanceAlertLevel = Exclude<InstanceAlertLevel, 'GREEN'>;
 
 export interface MissionTemplateRecord extends MissionTemplate {}
 export interface ActiveMissionRecord extends ActiveMission {}

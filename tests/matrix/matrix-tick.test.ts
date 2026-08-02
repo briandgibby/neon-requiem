@@ -76,7 +76,7 @@ describe('MatrixTickSystem — instance alert sync', () => {
     const registry = new EcsRegistry();
     const matrixRepo = { updateNodeAlert: jest.fn().mockResolvedValue(undefined) };
     const instanceRepo = {
-      findInstanceByRoomId: jest.fn().mockResolvedValue({ id: 'inst-1', alertLevel: 'YELLOW' }),
+      findActiveAlertForRoom: jest.fn().mockResolvedValue({ instanceId: 'inst-1', alertLevel: 'YELLOW' }),
       escalateAlertFromRoom: jest.fn().mockResolvedValue('unchanged'),
       ensureAlertFromRoom: jest.fn().mockResolvedValue('unchanged'),
     };
@@ -95,7 +95,7 @@ describe('MatrixTickSystem — instance alert sync', () => {
 
     await system.onTick(1);
 
-    expect(instanceRepo.findInstanceByRoomId).toHaveBeenCalledWith('room-1');
+    expect(instanceRepo.findActiveAlertForRoom).toHaveBeenCalledWith('room-1');
     expect(matrixRepo.updateNodeAlert).toHaveBeenCalledWith('node-db-1', 'YELLOW');
     expect(instanceRepo.escalateAlertFromRoom).not.toHaveBeenCalled();
   });
@@ -108,7 +108,7 @@ describe('MatrixTickSystem — instance alert sync', () => {
         .mockResolvedValueOnce(undefined),
     };
     const instanceRepo = {
-      findInstanceByRoomId: jest.fn().mockResolvedValue({ id: 'inst-1', alertLevel: 'YELLOW' }),
+      findActiveAlertForRoom: jest.fn().mockResolvedValue({ instanceId: 'inst-1', alertLevel: 'YELLOW' }),
       escalateAlertFromRoom: jest.fn(),
       ensureAlertFromRoom: jest.fn(),
     };
@@ -133,7 +133,7 @@ describe('MatrixTickSystem — instance alert sync', () => {
       escalateInstanceNodes: jest.fn().mockResolvedValue({ count: 1 }),
     };
     const instanceRepo = {
-      findInstanceByRoomId: jest.fn(),
+      findActiveAlertForRoom: jest.fn(),
       escalateAlertFromRoom: jest.fn(),
       ensureAlertFromRoom: jest.fn(),
       findActiveInstanceAlertSources: jest.fn().mockResolvedValue([
@@ -151,7 +151,7 @@ describe('MatrixTickSystem — instance alert sync', () => {
     const registry = new EcsRegistry();
     const matrixRepo = { updateNodeAlert: jest.fn().mockResolvedValue(undefined) };
     const instanceRepo = {
-      findInstanceByRoomId: jest.fn().mockResolvedValue({ id: 'inst-1', alertLevel: 'GREEN' }),
+      findActiveAlertForRoom: jest.fn().mockResolvedValue({ instanceId: 'inst-1', alertLevel: 'GREEN' }),
       escalateAlertFromRoom: jest.fn().mockResolvedValue('escalated'),
       ensureAlertFromRoom: jest.fn().mockResolvedValue('escalated'),
     };
@@ -170,8 +170,8 @@ describe('MatrixTickSystem — instance alert sync', () => {
     const registry = new EcsRegistry();
     const matrixRepo = { updateNodeAlert: jest.fn() };
     const instanceRepo = {
-      findInstanceByRoomId: jest.fn().mockResolvedValue({
-        id: 'inst-1', alertLevel: 'YELLOW', alertSourceRoomId: null,
+      findActiveAlertForRoom: jest.fn().mockResolvedValue({
+        instanceId: 'inst-1', alertLevel: 'YELLOW', alertSourceRoomId: null,
       }),
       escalateAlertFromRoom: jest.fn().mockResolvedValue('source-updated'),
       ensureAlertFromRoom: jest.fn().mockResolvedValue('source-updated'),
@@ -191,7 +191,7 @@ describe('MatrixTickSystem — instance alert sync', () => {
     const registry = new EcsRegistry();
     const matrixRepo = { updateNodeAlert: jest.fn().mockResolvedValue(undefined) };
     const instanceRepo = {
-      findInstanceByRoomId: jest.fn().mockResolvedValue(null),
+      findActiveAlertForRoom: jest.fn().mockResolvedValue(null),
       escalateAlertFromRoom: jest.fn(),
       ensureAlertFromRoom: jest.fn(),
     };
@@ -217,7 +217,7 @@ describe('MatrixTickSystem — instance alert sync', () => {
     const registry = new EcsRegistry();
     const matrixRepo = { updateNodeAlert: jest.fn() };
     const instanceRepo = {
-      findInstanceByRoomId: jest.fn().mockRejectedValue(new Error('database unavailable')),
+      findActiveAlertForRoom: jest.fn().mockRejectedValue(new Error('database unavailable')),
       escalateAlertFromRoom: jest.fn(),
       ensureAlertFromRoom: jest.fn(),
     };

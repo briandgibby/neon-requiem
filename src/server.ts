@@ -53,7 +53,6 @@ import { registerCharacterRoutes } from './domains/character/character.routes';
 import { WorldRepository } from './domains/world/world.repository';
 import { WorldService } from './domains/world/world.service';
 import { PatrolDefinitionRepository } from './domains/world/patrol-definition.repository';
-import { PatrolDefinitionService } from './domains/world/patrol-definition.service';
 import { PatrolBootstrap } from './engine/patrol-bootstrap';
 import { registerWorldRoutes } from './domains/world/world.routes';
 import { CombatRepository } from './domains/combat/combat.repository';
@@ -196,7 +195,7 @@ async function bootstrap() {
   const shopService = new ShopService(shopRepo, worldRepo, charRepo);
   registerShopRoutes(app, shopService, authService);
 
-  const patrolDefinitions = new PatrolDefinitionService(new PatrolDefinitionRepository(db));
+  const patrolDefinitions = new PatrolDefinitionRepository(db);
   await new PatrolBootstrap(ecsRegistry, patrolDefinitions, worldService, combatService, app.log).load();
 
   const socketHub = new SocketHub(app.server, authService, roomPresence, syncCoordinator);
