@@ -13,6 +13,7 @@ export interface LoginResult {
   token: string;
   accountId: string;
   username: string;
+  isAdmin: boolean;
 }
 
 export interface AccountRecord {
@@ -20,6 +21,7 @@ export interface AccountRecord {
   username: string;
   email: string;
   passwordHash: string;
+  isAdmin: boolean;
 }
 
 import { AuthPayload } from '../../shared/types';

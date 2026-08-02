@@ -12,6 +12,8 @@ interface Character {
 
 interface CharacterViewProps {
   token: string;
+  isAdmin: boolean;
+  onOpenAdmin: () => void;
   onSelect: (char: Character) => void;
   onLogout: () => void;
 }
@@ -76,7 +78,7 @@ const calculateStatKarmaCost = (floor: number, current: number) => {
   return cost;
 };
 
-export const CharacterView: React.FC<CharacterViewProps> = ({ token, onSelect, onLogout }) => {
+export const CharacterView: React.FC<CharacterViewProps> = ({ token, isAdmin, onOpenAdmin, onSelect, onLogout }) => {
   const [characters, setCharacters] = useState<Character[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -501,12 +503,22 @@ export const CharacterView: React.FC<CharacterViewProps> = ({ token, onSelect, o
             <h2 className="text-xl font-bold tracking-[0.2em] text-glow uppercase">Neural Signatures</h2>
             <p className="text-[10px] opacity-50 uppercase tracking-widest mt-1">Select an active persona or initialize new</p>
           </div>
-          <button 
-            onClick={onLogout}
-            className="flex items-center gap-2 text-[10px] hover:text-pink-500 transition-colors tracking-widest uppercase font-bold"
-          >
-            [ TERMINATE SESSION ] <LogOut size={14} />
-          </button>
+          <div className="flex items-center gap-4">
+            {isAdmin && (
+              <button
+                onClick={onOpenAdmin}
+                className="flex items-center gap-2 text-[10px] hover:text-blue-400 transition-colors tracking-widest uppercase font-bold"
+              >
+                [ SNAPSHOT ARCHIVE ] <Shield size={14} />
+              </button>
+            )}
+            <button
+              onClick={onLogout}
+              className="flex items-center gap-2 text-[10px] hover:text-pink-500 transition-colors tracking-widest uppercase font-bold"
+            >
+              [ TERMINATE SESSION ] <LogOut size={14} />
+            </button>
+          </div>
         </div>
 
         <div className="flex-1 overflow-y-auto p-6 space-y-4">

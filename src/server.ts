@@ -72,6 +72,9 @@ import { ShopRepository } from './domains/shop/shop.repository';
 import { ShopService } from './domains/shop/shop.service';
 import { registerShopRoutes } from './domains/shop/shop.routes';
 import { AuditLogger } from './engine/audit-logger';
+import { SnapshotHistoryRepository } from './domains/admin/snapshot-history.repository';
+import { SnapshotHistoryService } from './domains/admin/snapshot-history.service';
+import { registerSnapshotHistoryRoutes } from './domains/admin/snapshot-history.routes';
 import type { Socket } from 'socket.io';
 import type { AuthPayload } from './shared/types';
 import type { JwtSigner } from './domains/auth/auth.types';
@@ -139,6 +142,9 @@ async function bootstrap() {
   const worldRepo = new WorldRepository(db);
   const charService = new CharacterService(charRepo, worldRepo);
   registerCharacterRoutes(app, charService, authService);
+
+  const snapshotHistory = new SnapshotHistoryService(new SnapshotHistoryRepository(db));
+  registerSnapshotHistoryRoutes(app, snapshotHistory, authService);
 
   const worldService = new WorldService(worldRepo, charRepo, roomPresence);
   registerWorldRoutes(app, worldService, authService);

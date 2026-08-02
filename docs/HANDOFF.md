@@ -431,6 +431,12 @@ The project has moved from a shallow procedural model to a **Deep Module** archi
    - Live verification temporarily disabled protection in the Neon Razor Market and restored the original value. Focused race/cache tests, the full backend suite, and both production builds pass.
    - Deliberately still deferred: event identity/persistence, scheduling, overlapping-event ownership, faction/allegiance behavior, rewards, and crash-recovery restoration.
 
+29. **Admin Snapshot History (COMPLETE, 2026-08-02):**
+   - Added a database-backed `Account.isAdmin` capability; the server rechecks current account state for every snapshot-history request instead of trusting the client or a long-lived JWT claim.
+   - Disconnect snapshots now use the dedicated `PLAYER_SNAPSHOT` audit category. The migration reclassifies existing snapshot-bearing transaction rows and adds a newest-first audit index.
+   - Added a bounded, read-only `/admin/snapshots` endpoint with an optional character ID filter. Responses expose only validated HP, stun, mana, room, and timestamp data rather than arbitrary audit metadata.
+   - Added an administrator-only snapshot archive view to the persona screen with filtering and refresh controls.
+
 ---
 
 ## 4. Immediate Next Steps (Phase 4.4+)
@@ -440,7 +446,6 @@ The project has moved from a shallow procedural model to a **Deep Module** archi
 There are no remaining Phase 4.4 follow-ons in the tracked implementation plans.
 
 **Remaining carry-forward items:**
-- Snapshot history/admin tooling — no admin-facing snapshot history view yet
 - Frontend lint debt in `client/src` (explicit `any`, React hook rules, static components declared during render)
 
 

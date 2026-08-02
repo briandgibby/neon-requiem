@@ -65,7 +65,7 @@ describe('PlayerSyncCoordinator', () => {
     });
     expect(tx.auditLog.create).toHaveBeenCalledWith(expect.objectContaining({
       data: expect.objectContaining({
-        category: 'TRANSACTION',
+        category: 'PLAYER_SNAPSHOT',
         characterId: 'char-1',
       }),
     }));

@@ -51,7 +51,7 @@ export class PlayerSyncCoordinator {
         // Log the final snapshot state in the same transaction as the write.
         await tx.auditLog.create({
           data: {
-            category: 'TRANSACTION',
+            category: 'PLAYER_SNAPSHOT',
             severity: 'INFO',
             message: `Player ${characterId} disconnected. Final state persisted.`,
             characterId,

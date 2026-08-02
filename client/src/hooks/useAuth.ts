@@ -4,6 +4,7 @@ import { apiUrl } from '../lib/api';
 interface User {
   id: string;
   username: string;
+  isAdmin: boolean;
 }
 
 export const useAuth = () => {
@@ -33,7 +34,7 @@ export const useAuth = () => {
       throw error;
     }
 
-    const userData = { id: data.accountId, username: data.username };
+    const userData = { id: data.accountId, username: data.username, isAdmin: data.isAdmin === true };
     setToken(data.token);
     setUser(userData);
     localStorage.setItem('nr_token', data.token);
@@ -54,7 +55,7 @@ export const useAuth = () => {
       throw error;
     }
 
-    const userData = { id: data.accountId, username: data.username };
+    const userData = { id: data.accountId, username: data.username, isAdmin: data.isAdmin === true };
     setToken(data.token);
     setUser(userData);
     localStorage.setItem('nr_token', data.token);
