@@ -11,6 +11,7 @@ export class NavigateHandler implements CommandHandler {
   readonly label = 'Navigate';
   readonly description = 'Auto-navigate to a known point of interest';
   readonly usage = '<poi>';
+  readonly argumentSource = 'poi' as const;
 
   constructor(
     private readonly worldService: WorldService,

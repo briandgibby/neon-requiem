@@ -175,6 +175,11 @@ export class SocketHub {
     return this.presence.getSocketForCharacter(characterName);
   }
 
+  findCharacterById(characterId: string): { socketId: string; name: string } | null {
+    const client = this.presence.getClientByCharacterId(characterId);
+    return client ? { socketId: client.socketId, name: client.characterName } : null;
+  }
+
   private emitRoomOccupants(roomId: string): void {
     this.io.to(roomId).emit('room_occupants', this.presence.getRoomOccupants(roomId));
   }

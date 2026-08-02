@@ -105,6 +105,11 @@ export class RoomPresence extends EventEmitter {
     return this.clientsBySocket.get(socketId) ?? null;
   }
 
+  getClientByCharacterId(characterId: string): PresenceClient | null {
+    const socketId = this.socketIdByCharacter.get(characterId);
+    return socketId ? this.getClient(socketId) : null;
+  }
+
   getRoomOccupants(roomId: string): RoomOccupant[] {
     return [...this.clientsBySocket.values()]
       .filter((client) => client.roomId === roomId)

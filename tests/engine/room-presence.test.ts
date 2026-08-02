@@ -16,6 +16,10 @@ describe('RoomPresence', () => {
     expect(presence.getRoomOccupants('room-a')).toEqual([
       { characterId: 'char-1', name: 'Chrome Fox' },
     ]);
+    expect(presence.getClientByCharacterId('char-1')).toEqual(expect.objectContaining({
+      socketId: 'socket-1',
+      characterName: 'Chrome Fox',
+    }));
   });
 
   it('moves selected characters between rooms and updates both occupant lists', () => {

@@ -404,6 +404,29 @@ export const GameView: React.FC<GameViewProps> = ({ token, character, onLogout }
           <CommandPicker
             commands={commands}
             hotkeys={hotkeys}
+            argumentOptions={{
+              direction: Object.keys(roomData?.exits ?? {}).map((direction) => ({
+                value: direction,
+                label: direction.toUpperCase(),
+              })),
+              poi: charData.areaKnowledge?.includes(roomData?.zone?.slug)
+                ? localPois.map((poi) => ({ value: poi.slug, label: poi.name }))
+                : [],
+              ice: (matrixData?.activeIC ?? [])
+                .filter((ice: any) => ice.currentHp > 0)
+                .map((ice: any) => ({
+                  value: ice.id,
+                  label: `${ice.name ?? ice.slug ?? ice.type} (${ice.currentHp}/${ice.maxHp})`,
+                })),
+            }}
+            argumentSuggestions={{
+              occupant: roomOccupants
+                .filter((occupant) => occupant.characterId !== charData.id)
+                .map((occupant) => ({
+                  value: `@neon-requiem-character-selector:${occupant.characterId}`,
+                  label: occupant.name,
+                })),
+            }}
             isMatrixMode={charData.isJackedIn}
             onCommand={dispatchCommand}
             onSaveHotkey={saveHotkey}

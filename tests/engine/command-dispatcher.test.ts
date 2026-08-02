@@ -29,6 +29,7 @@ function buildMocks() {
     getRoomOccupants: jest.fn().mockReturnValue([]),
     emitToRoom: jest.fn(),
     findSocketForCharacter: jest.fn(),
+    findCharacterById: jest.fn(),
     sendToSocket: jest.fn(),
   };
   const matrixService = {
@@ -136,6 +137,40 @@ describe('CommandDispatcher', () => {
     });
     expect(output.emit).toHaveBeenCalledWith('chat_message', {
       from: 'to Wraith',
+      text: 'hello',
+      scope: 'tell',
+    });
+  });
+
+  it('uses stable character ids from tell suggestions', async () => {
+    const { dispatcher, socketHub, output } = buildDispatcher();
+    socketHub.getSelectedClient.mockReturnValue({ characterId: 'char-1', accountId: 'acc-1', characterName: 'Fox', roomId: 'room-1' });
+    socketHub.findCharacterById.mockReturnValue({ socketId: 'socket-target', name: 'Chrome Fox' });
+
+    await dispatcher.dispatch(output, 'tell @neon-requiem-character-selector:char-2 meet at the clinic');
+
+    expect(socketHub.findCharacterById).toHaveBeenCalledWith('char-2');
+    expect(socketHub.sendToSocket).toHaveBeenCalledWith('socket-target', 'chat_message', {
+      from: 'Fox',
+      text: 'meet at the clinic',
+      scope: 'tell',
+    });
+    expect(output.emit).toHaveBeenCalledWith('chat_message', {
+      from: 'to Chrome Fox',
+      text: 'meet at the clinic',
+      scope: 'tell',
+    });
+  });
+
+  it('preserves existing character names that begin with @', async () => {
+    const { dispatcher, socketHub, output } = buildDispatcher();
+    socketHub.findSocketForCharacter.mockReturnValue('socket-target');
+
+    await dispatcher.dispatch(output, 'tell @neo hello');
+
+    expect(socketHub.findSocketForCharacter).toHaveBeenCalledWith('@neo');
+    expect(output.emit).toHaveBeenCalledWith('chat_message', {
+      from: 'to @neo',
       text: 'hello',
       scope: 'tell',
     });

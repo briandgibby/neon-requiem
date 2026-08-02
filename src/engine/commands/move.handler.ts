@@ -16,6 +16,7 @@ export class MoveHandler implements CommandHandler {
   readonly label = 'Move';
   readonly description = 'Move your character in a direction';
   readonly usage = '<n|s|e|w|u|d>';
+  readonly argumentSource = 'direction' as const;
 
   constructor(
     private readonly worldService: WorldService,

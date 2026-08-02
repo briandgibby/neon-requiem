@@ -37,7 +37,6 @@ Expose registered command metadata to the client and render a mode-aware command
 
 ## Deferred
 
-- Entity-aware dropdowns for argument selection, such as ICE IDs for `spike`.
 - Drag/drop or keyboard remapping UI.
 
 ## Follow-on Completed (2026-08-02)
@@ -47,6 +46,7 @@ Expose registered command metadata to the client and render a mode-aware command
 - Kept expansion upstream of command dispatch and limited it to raw terminal input.
 - Serialized client mutations so overlapping saves and removals retain the latest confirmed map.
 - Added regression coverage for ownership, validation, concurrent mutations, and prototype-key safety.
+- Added metadata-driven selectors for valid exits, known POIs, and living ICE targets, plus advisory local-occupant suggestions that retain Tell's free-text/global-player path.
 
 ---
 

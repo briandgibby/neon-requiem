@@ -20,6 +20,7 @@ export interface RoomRecord {
   isSafeZone: boolean;
   safeZoneOverrideActive: boolean;
   missionInstanceId: string | null;
+  zone?: ZoneRecord;
 }
 
 export interface ZoneRecord {

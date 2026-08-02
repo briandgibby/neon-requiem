@@ -23,12 +23,14 @@ export class WorldRepository {
   async findRoomBySlug(slug: string): Promise<RoomRecord | null> {
     return this.db.room.findUnique({
       where: { slug },
+      include: { zone: true },
     }) as unknown as RoomRecord | null;
   }
 
   async findRoomById(id: string): Promise<RoomRecord | null> {
     return this.db.room.findUnique({
       where: { id },
+      include: { zone: true },
     }) as unknown as RoomRecord | null;
   }
 

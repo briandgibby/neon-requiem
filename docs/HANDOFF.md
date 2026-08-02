@@ -400,6 +400,14 @@ The project has moved from a shallow procedural model to a **Deep Module** archi
    - Live browser verification confirmed save, reload persistence, expansion-driven movement, and removal; focused tests, all backend tests, and both production builds pass.
    - Diagnose and architecture re-reviews found no actionable defects or required-now design issues after concurrency, dispatch-boundary, prototype-key, and picker-selection regression fixes; standards review approved the final slice.
 
+24. **Entity-Aware Command Arguments (COMPLETE, 2026-08-02):**
+   - Extended safe command metadata with compact option-source declarations for movement directions, known POIs, and active ICE.
+   - `GameView` adapts existing live room/matrix state into uniform display-label/value options; opaque ICE database IDs remain hidden behind readable names and HP.
+   - The picker disables Run and Save when a structured command has no valid target, and excludes defeated ICE.
+   - Room lookups now include zone identity, repairing the existing client area-knowledge/zone-slug contract used to expose known POIs.
+   - Tell remains on its existing free-text/global-player path, augmented with non-exhaustive local-occupant suggestions. Suggestions use stable character IDs behind display names to avoid local duplicate/multi-word-name misdelivery.
+   - Pure composition tests cover movement alias preservation and opaque ICE IDs; registry and room-view contracts have focused regression coverage.
+
 ---
 
 ## 4. Immediate Next Steps (Phase 4.4+)
@@ -407,7 +415,6 @@ The project has moved from a shallow procedural model to a **Deep Module** archi
 **Phase 4.4A through 4.4E and the Redmond Barrens content slice are complete locally.**
 
 1. Remaining Phase 4.4 follow-ons:
-   - Entity-aware command argument pickers
    - MissionInstance-wide alert source integration for patrols
 
 **Remaining carry-forward items:**

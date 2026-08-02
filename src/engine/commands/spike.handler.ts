@@ -7,6 +7,7 @@ export class DataSpikeHandler implements CommandHandler {
   readonly label = 'Data Spike';
   readonly description = 'Attack an ICE program with a focused data spike';
   readonly usage = '<ice-id>';
+  readonly argumentSource = 'ice' as const;
 
   constructor(private readonly matrixService: MatrixService) {}
 

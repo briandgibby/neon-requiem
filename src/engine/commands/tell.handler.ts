@@ -1,26 +1,38 @@
 import { CommandContext, CommandHandler } from '../command-registry';
 import { SocketHub } from '../socket-hub';
 
+const CHARACTER_SELECTOR_PREFIX = '@neon-requiem-character-selector:';
+
 export class TellHandler implements CommandHandler {
   readonly aliases = ['tell'] as const;
   readonly mode = 'any' as const;
   readonly label = 'Tell';
   readonly description = 'Send a private message to another player';
   readonly usage = '<name> <message>';
+  readonly argumentSuggestionSource = 'occupant' as const;
 
   constructor(private readonly socketHub: SocketHub) {}
 
   async execute(context: CommandContext): Promise<void> {
     const { characterName, args, output, message } = context;
-    const targetName = args[0];
+    const targetSelector = args[0];
     const chatContent = args.slice(1).join(' ').trim();
 
-    if (!targetName || !chatContent) {
+    if (!targetSelector || !chatContent) {
       message('Usage: tell <name> <message>');
       return;
     }
 
-    const targetSocketId = this.socketHub.findSocketForCharacter(targetName);
+    let targetName = targetSelector;
+    let targetSocketId: string | null;
+    if (targetSelector.startsWith(CHARACTER_SELECTOR_PREFIX)) {
+      const target = this.socketHub.findCharacterById(targetSelector.slice(CHARACTER_SELECTOR_PREFIX.length));
+      targetName = target?.name ?? 'That character';
+      targetSocketId = target?.socketId ?? null;
+    } else {
+      targetSocketId = this.socketHub.findSocketForCharacter(targetSelector);
+    }
+
     if (!targetSocketId) {
       message(`${targetName} is not online.`, 'error');
       return;
