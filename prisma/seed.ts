@@ -35,13 +35,18 @@ async function main() {
   // Create Rooms for Corp Hub
   const corpCenter = await prisma.room.upsert({
     where: { slug: STARTING_ROOM_CORP },
-    update: {},
+    update: {
+      gridX: 5,
+      gridY: 5,
+    },
     create: {
       slug: STARTING_ROOM_CORP,
       zoneId: corpZone.id,
       name: 'Arcology Main Plaza',
       description: 'A vast, sterile plaza with gleaming chrome surfaces and holographic advertisements for Mitsuhama and Renraku.',
       securityRating: 'AAA',
+      gridX: 5,
+      gridY: 5,
       exits: {
         north: 'corp-executive-offices',
         south: 'corp-transit-hub',
@@ -51,7 +56,10 @@ async function main() {
 
   await prisma.room.upsert({
     where: { slug: 'corp-executive-offices' },
-    update: {},
+    update: {
+      gridX: 5,
+      gridY: 6,
+    },
     create: {
       slug: 'corp-executive-offices',
       zoneId: corpZone.id,
@@ -59,6 +67,8 @@ async function main() {
       description: 'High-security offices for the corporate elite. The air is filtered and smells faintly of expensive cologne.',
       securityRating: 'AAA',
       baseDisposition: 'SUSPICIOUS',
+      gridX: 5,
+      gridY: 6,
       exits: {
         south: STARTING_ROOM_CORP,
       },
@@ -67,7 +77,14 @@ async function main() {
 
   await prisma.room.upsert({
     where: { slug: 'corp-transit-hub' },
-    update: {},
+    update: {
+      gridX: 5,
+      gridY: 4,
+      exits: {
+        north: STARTING_ROOM_CORP,
+        south: 'neon-bazaar',
+      },
+    },
     create: {
       slug: 'corp-transit-hub',
       zoneId: corpZone.id,
@@ -75,8 +92,11 @@ async function main() {
       description: 'The main hub for mag-lev trains connecting the arcology to the rest of the city.',
       securityRating: 'AA',
       baseDisposition: 'NEUTRAL',
+      gridX: 5,
+      gridY: 4,
       exits: {
         north: STARTING_ROOM_CORP,
+        south: 'neon-bazaar',
       },
     },
   });
@@ -84,13 +104,22 @@ async function main() {
   // Create Rooms for Shadow Hub
   const shadowCenter = await prisma.room.upsert({
     where: { slug: STARTING_ROOM_SHADOW },
-    update: {},
+    update: {
+      gridX: 5,
+      gridY: 5,
+      exits: {
+        east: 'shadow-black-market',
+        west: 'shadow-gang-turf',
+      },
+    },
     create: {
       slug: STARTING_ROOM_SHADOW,
       zoneId: shadowZone.id,
       name: 'The Pit',
       description: 'A dark, crowded intersection in the heart of the Undermarket. Neon signs flicker and the smell of soy-burgers and rain fills the air.',
       securityRating: 'C',
+      gridX: 5,
+      gridY: 5,
       exits: {
         east: 'shadow-black-market',
         west: 'shadow-gang-turf',
@@ -103,6 +132,8 @@ async function main() {
     update: {
       isPOI: true,
       poiCategory: 'SHOP',
+      gridX: 6,
+      gridY: 5,
     },
     create: {
       slug: 'shadow-black-market',
@@ -112,6 +143,8 @@ async function main() {
       securityRating: 'D',
       isPOI: true,
       poiCategory: 'SHOP',
+      gridX: 6,
+      gridY: 5,
       exits: {
         west: STARTING_ROOM_SHADOW,
       },
@@ -120,13 +153,18 @@ async function main() {
 
   await prisma.room.upsert({
     where: { slug: 'shadow-gang-turf' },
-    update: {},
+    update: {
+      gridX: 4,
+      gridY: 5,
+    },
     create: {
       slug: 'shadow-gang-turf',
       zoneId: shadowZone.id,
       name: 'Graffiti-Scrawled Courtyard',
       description: 'A courtyard claimed by the local Neon Razors gang. Watch your step.',
       securityRating: 'D',
+      gridX: 4,
+      gridY: 5,
       exits: {
         east: STARTING_ROOM_SHADOW,
       },
@@ -148,7 +186,16 @@ async function main() {
 
   const neonBazaar = await prisma.room.upsert({
     where: { slug: 'neon-bazaar' },
-    update: {},
+    update: {
+      gridX: 5,
+      gridY: 5,
+      exits: {
+        south: 'shadow-gang-turf',
+        east: 'neon-arms-dealer',
+        west: 'neon-street-doc',
+        north: 'corp-transit-hub',
+      },
+    },
     create: {
       slug: 'neon-bazaar',
       zoneId: neonZone.id,
@@ -157,17 +204,23 @@ async function main() {
       securityRating: 'B',
       isPOI: true,
       poiCategory: 'HUB',
+      gridX: 5,
+      gridY: 5,
       exits: {
         south: 'shadow-gang-turf',
         east: 'neon-arms-dealer',
         west: 'neon-street-doc',
+        north: 'corp-transit-hub',
       },
     },
   });
 
   await prisma.room.upsert({
     where: { slug: 'neon-arms-dealer' },
-    update: {},
+    update: {
+      gridX: 6,
+      gridY: 5,
+    },
     create: {
       slug: 'neon-arms-dealer',
       zoneId: neonZone.id,
@@ -176,6 +229,8 @@ async function main() {
       securityRating: 'B',
       isPOI: true,
       poiCategory: 'SHOP',
+      gridX: 6,
+      gridY: 5,
       exits: {
         west: 'neon-bazaar',
       },
@@ -184,7 +239,10 @@ async function main() {
 
   await prisma.room.upsert({
     where: { slug: 'neon-street-doc' },
-    update: {},
+    update: {
+      gridX: 4,
+      gridY: 5,
+    },
     create: {
       slug: 'neon-street-doc',
       zoneId: neonZone.id,
@@ -193,22 +251,321 @@ async function main() {
       securityRating: 'B',
       isPOI: true,
       poiCategory: 'SHOP',
+      gridX: 4,
+      gridY: 5,
       exits: {
         east: 'neon-bazaar',
       },
     },
   });
 
-  // Connect shadow-gang-turf north to the bazaar
+  console.log('Seeding Redmond Barrens...');
+
+  const redmondZone = await prisma.zone.upsert({
+    where: { slug: 'redmond-barrens' },
+    update: {},
+    create: {
+      slug: 'redmond-barrens',
+      name: 'Redmond Barrens',
+      securityRating: 'Z',
+    },
+  });
+
+  await prisma.room.upsert({
+    where: { slug: 'redmond-tourist-grave' },
+    update: {
+      gridX: 5,
+      gridY: 5,
+      isSafeZone: false,
+      exits: {
+        north: 'redmond-razor-market',
+        south: 'redmond-coffin-bar',
+        east: 'redmond-scrapheap',
+        west: 'redmond-derelict-warehouse',
+      },
+    },
+    create: {
+      slug: 'redmond-tourist-grave',
+      zoneId: redmondZone.id,
+      name: 'The Tourist Grave',
+      description: 'An intersection of cracked asphalt littered with glass shards and rusted hulls of abandoned vehicles. Unshielded power grids hum overhead, casting sparks into the dirty puddles below. Gang members wearing leather jackets with glowing synth-strips sit on the hood of a burnt-out taxi, lazily watching the streets. The heavy smell of burnt rubber and chemical fires drifts from the south, under the persistent grey drizzle.',
+      securityRating: 'Z',
+      gridX: 5,
+      gridY: 5,
+      exits: {
+        north: 'redmond-razor-market',
+        south: 'redmond-coffin-bar',
+        east: 'redmond-scrapheap',
+        west: 'redmond-derelict-warehouse',
+      },
+    },
+  });
+
+  await prisma.room.upsert({
+    where: { slug: 'redmond-razor-market' },
+    update: {
+      isPOI: true,
+      poiCategory: 'HUB',
+      gridX: 5,
+      gridY: 6,
+      isSafeZone: true,
+      exits: {
+        south: 'redmond-tourist-grave',
+        east: 'redmond-trunk-swap',
+        west: 'redmond-shaman-shack',
+        north: 'redmond-cable-junkie',
+      },
+    },
+    create: {
+      slug: 'redmond-razor-market',
+      zoneId: redmondZone.id,
+      name: 'The Neon Razor Market',
+      description: 'Under the shadow of a partially collapsed highway overpass, a makeshift bazaar thrives behind barricades of scrap metal and razor wire. Heavily armed Neon Razor gang enforcers patrol the perimeter, keeping a tense peace and ensuring no unapproved violence occurs within the gate. Stalls constructed from rusted oil drums and corrugated iron display salvage and contraband. The smell of exhaust, hot copper, and cheap soy-noodles hangs thick in the air, creating a seedy oasis of commerce.',
+      securityRating: 'Z',
+      isPOI: true,
+      poiCategory: 'HUB',
+      isSafeZone: true,
+      gridX: 5,
+      gridY: 6,
+      exits: {
+        south: 'redmond-tourist-grave',
+        east: 'redmond-trunk-swap',
+        west: 'redmond-shaman-shack',
+        north: 'redmond-cable-junkie',
+      },
+    },
+  });
+
+  await prisma.room.upsert({
+    where: { slug: 'redmond-trunk-swap' },
+    update: {
+      isPOI: true,
+      poiCategory: 'SHOP',
+      gridX: 6,
+      gridY: 6,
+      isSafeZone: true,
+      exits: {
+        west: 'redmond-razor-market',
+      },
+    },
+    create: {
+      slug: 'redmond-trunk-swap',
+      zoneId: redmondZone.id,
+      name: 'The Trunk Swap',
+      description: 'A propped-open trunk of a dirty retro car in a dark alley displays pistols, makeshift firearms, and heavy combat vests laid out on oil-stained blankets. A dwarf vendor sits on a crate nearby, polishing a shotgun, while a gang sentinel stands watch at the mouth of the alley. The sharp smell of gun oil and gasoline is thick, mixed with the quiet hum of an electric space heater.',
+      securityRating: 'Z',
+      isPOI: true,
+      poiCategory: 'SHOP',
+      isSafeZone: true,
+      gridX: 6,
+      gridY: 6,
+      exits: {
+        west: 'redmond-razor-market',
+      },
+    },
+  });
+
+  await prisma.room.upsert({
+    where: { slug: 'redmond-shaman-shack' },
+    update: {
+      isPOI: true,
+      poiCategory: 'SHOP',
+      gridX: 4,
+      gridY: 6,
+      isSafeZone: true,
+      exits: {
+        east: 'redmond-razor-market',
+      },
+    },
+    create: {
+      slug: 'redmond-shaman-shack',
+      zoneId: redmondZone.id,
+      name: "The Shaman's Shack",
+      description: 'Tucked between two crumbling brick tenements, a tarp-covered shack smells of burning sage and synthetic incense. Shelves made from scrap timber are loaded with jars of swamp-leech preserves, bone charms, and reagent bundles. Stuttered neon glyphs are painted on the doorway to ward off hostile spirits, while a silent gang guard sits on a stool outside with a shotgun across his lap.',
+      securityRating: 'Z',
+      isPOI: true,
+      poiCategory: 'SHOP',
+      isSafeZone: true,
+      gridX: 4,
+      gridY: 6,
+      exits: {
+        east: 'redmond-razor-market',
+      },
+    },
+  });
+
+  await prisma.room.upsert({
+    where: { slug: 'redmond-cable-junkie' },
+    update: {
+      isPOI: true,
+      poiCategory: 'SHOP',
+      gridX: 5,
+      gridY: 7,
+      isSafeZone: true,
+      exits: {
+        south: 'redmond-razor-market',
+      },
+    },
+    create: {
+      slug: 'redmond-cable-junkie',
+      zoneId: redmondZone.id,
+      name: 'The Cable Junkie',
+      description: 'This shop is little more than a windowless metal shipping container welded onto the chassis of a flatbed truck. Bundles of salvaged fiber-optic cables hang from the ceiling like creepers, lit by the green glow of retrofitted monitors showing active matrix diagnostics. Cyberdecks with exposed motherboard circuitry and custom cooling tubes sit on a workbench, alongside stacks of cracked optical drives. A gang-hired decker monitors the door from behind a barrier of unshielded servers, ensuring transactions remain undisturbed.',
+      securityRating: 'Z',
+      isPOI: true,
+      poiCategory: 'SHOP',
+      isSafeZone: true,
+      gridX: 5,
+      gridY: 7,
+      exits: {
+        south: 'redmond-razor-market',
+      },
+    },
+  });
+
+  await prisma.room.upsert({
+    where: { slug: 'redmond-coffin-bar' },
+    update: {
+      isPOI: true,
+      poiCategory: 'BAR',
+      gridX: 5,
+      gridY: 4,
+      isSafeZone: true,
+      exits: {
+        north: 'redmond-tourist-grave',
+        south: 'redmond-collapsed-court',
+      },
+    },
+    create: {
+      slug: 'redmond-coffin-bar',
+      zoneId: redmondZone.id,
+      name: 'The Coffin Bar',
+      description: 'Built entirely from stacked metal shipping containers, this seedy dive bar offers a quiet escape from the lawless sprawl. Low-frequency synth-bass vibrates through the metal floor, and the only light comes from a rusted beer sign and the neon blue liquid in dirty glasses. Patrons sit in booths made of hollowed-out cargo crates, talking in low whispers while the bartender cleans glasses with a dirty rag. Outside, gang enforcers stand by the heavy steel door, keeping the local violence far from the bar\'s threshold.',
+      securityRating: 'Z',
+      isPOI: true,
+      poiCategory: 'BAR',
+      isSafeZone: true,
+      gridX: 5,
+      gridY: 4,
+      exits: {
+        north: 'redmond-tourist-grave',
+        south: 'redmond-collapsed-court',
+      },
+    },
+  });
+
+  await prisma.room.upsert({
+    where: { slug: 'redmond-collapsed-court' },
+    update: {
+      gridX: 5,
+      gridY: 3,
+      isSafeZone: false,
+      exits: {
+        north: 'redmond-coffin-bar',
+      },
+    },
+    create: {
+      slug: 'redmond-collapsed-court',
+      zoneId: redmondZone.id,
+      name: 'The Collapsed Courthouse',
+      description: 'The imposing facade of a municipal courthouse has crumbled, leaving a pile of concrete slabs and twisted rebar blocking the lobby entrance. Inside, decaying filing cabinets stand open, their waterlogged tax forms and criminal records forming a rotting carpet on the floor. Faint magical residue still clings to the shattered seals on the vault door in the rear, whispering of forgotten secrets.',
+      securityRating: 'Z',
+      gridX: 5,
+      gridY: 3,
+      exits: {
+        north: 'redmond-coffin-bar',
+      },
+    },
+  });
+
+  await prisma.room.upsert({
+    where: { slug: 'redmond-derelict-warehouse' },
+    update: {
+      gridX: 4,
+      gridY: 5,
+      isSafeZone: false,
+      exits: {
+        east: 'redmond-tourist-grave',
+        west: 'redmond-ruined-mall',
+      },
+    },
+    create: {
+      slug: 'redmond-derelict-warehouse',
+      zoneId: redmondZone.id,
+      name: 'Derelict Shipping Warehouse',
+      description: 'A cavernous, shadow-choked warehouse with a partially collapsed roof allowing toxic rain to puddle on the cracked concrete floor. Rusted steel shelves are tipped over, spilling rotting packing crates and bundles of dead copper wires. Dust motes dance in the flickering blue light of a broken security camera, and scratching sounds behind the debris suggest local fauna—or desperate scavengers—lurking in the darkness.',
+      securityRating: 'Z',
+      gridX: 4,
+      gridY: 5,
+      exits: {
+        east: 'redmond-tourist-grave',
+        west: 'redmond-ruined-mall',
+      },
+    },
+  });
+
+  await prisma.room.upsert({
+    where: { slug: 'redmond-ruined-mall' },
+    update: {
+      gridX: 3,
+      gridY: 5,
+      isSafeZone: false,
+      exits: {
+        east: 'redmond-derelict-warehouse',
+      },
+    },
+    create: {
+      slug: 'redmond-ruined-mall',
+      zoneId: redmondZone.id,
+      name: 'The Shattered Mall',
+      description: 'The shattered dome of the mall skylight exposes the dead escalators and overgrown planters to the grey sky. Once-vibrant retail facades are now gutted shells, spray-painted with gang markers and corporate slogans. Shadows move behind cracked display windows, and the faint, echoing sound of dripping water is occasionally broken by the low chatter of scavengers or security drones on patrol.',
+      securityRating: 'Z',
+      gridX: 3,
+      gridY: 5,
+      exits: {
+        east: 'redmond-derelict-warehouse',
+      },
+    },
+  });
+
+  await prisma.room.upsert({
+    where: { slug: 'redmond-scrapheap' },
+    update: {
+      gridX: 6,
+      gridY: 5,
+      isSafeZone: false,
+      exits: {
+        west: 'redmond-tourist-grave',
+        east: 'shadow-gang-turf',
+      },
+    },
+    create: {
+      slug: 'redmond-scrapheap',
+      zoneId: redmondZone.id,
+      name: 'The Scrapheap',
+      description: 'A vast, unsecured field of crushed cars, industrial slag, and rusted sheet metal stretching as far as the eye can see. There are no gang sentries or corporate security forces here, leaving the area entirely lawless and vulnerable to predators. Opt-in combat warnings trigger on AR HUDs as the ambient matrix signal drops to a faint, crackling hiss. The smell of burning rubber and chemical runoff rises from a stagnant pond, reflecting the dark, toxic clouds above.',
+      securityRating: 'Z',
+      gridX: 6,
+      gridY: 5,
+      exits: {
+        west: 'redmond-tourist-grave',
+        east: 'shadow-gang-turf',
+      },
+    },
+  });
+
+  // Connect shadow-gang-turf north to the bazaar and west to Redmond
   await prisma.room.update({
     where: { slug: 'shadow-gang-turf' },
     data: {
       exits: {
         east: STARTING_ROOM_SHADOW,
         north: 'neon-bazaar',
+        west: 'redmond-scrapheap',
       },
     },
   });
+
 
   console.log('Seeding Matrix items...');
   
