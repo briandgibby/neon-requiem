@@ -318,6 +318,7 @@ model IntCountermeasure {
   defense     Int
   hardening   Int     @default(0) // ICE hardening/resistance stat
 
+  @@unique([nodeId, slug])
   @@map("ice")
 }
 

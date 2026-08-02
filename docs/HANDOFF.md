@@ -382,14 +382,22 @@ The project has moved from a shallow procedural model to a **Deep Module** archi
    - Diagnose and spec reviews found no behavioral defects; the standards review's unused bindings were removed.
    - Architecture review recommendation: introduce a canonical World bootstrap module before the next large Zone expansion, but defer that refactor for this localized slice.
 
+22. **ICE Seed Idempotency (COMPLETE, 2026-08-02):**
+   - Reproduced unconditional ICE duplication: each full seed run added one identical Killer ICE and Blaster ICE row to the same Matrix node.
+   - Added the database invariant `@@unique([nodeId, slug])`; the node-scoped slug is the authored identity while the database `id` remains the runtime/ECS identity.
+   - Added a data-repair migration that removes existing duplicate ICE rows before creating the compound unique index.
+   - Replaced unconditional ICE `create` calls with compound-key upserts.
+   - Applied the migration to the development database, reducing six copies of each seeded ICE definition to one.
+   - Two consecutive full seed runs preserve exactly one row and the same database ID for each ICE definition.
+   - Diagnose and architecture reviews found no actionable defects or required deepening work.
+
 ---
 
 ## 4. Immediate Next Steps (Phase 4.4+)
 
 **Phase 4.4A through 4.4E and the Redmond Barrens content slice are complete locally.**
 
-1. Fix seed-wide ICE idempotency and repair duplicate `IntCountermeasure` rows exposed by repeated live seed verification.
-2. Remaining Phase 4.4 follow-ons:
+1. Remaining Phase 4.4 follow-ons:
    - Persisted hotkey mappings and entity-aware command argument pickers
    - MissionInstance-wide alert source integration for patrols
 

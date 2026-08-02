@@ -638,8 +638,15 @@ async function main() {
   });
 
   // ICE for Corp Node
-  await prisma.intCountermeasure.create({
-    data: {
+  await prisma.intCountermeasure.upsert({
+    where: {
+      nodeId_slug: {
+        nodeId: corpNode.id,
+        slug: 'killer-ice-01',
+      },
+    },
+    update: {},
+    create: {
       slug: 'killer-ice-01',
       name: 'Killer ICE',
       type: 'BLACK',
@@ -651,8 +658,15 @@ async function main() {
     }
   });
 
-  await prisma.intCountermeasure.create({
-    data: {
+  await prisma.intCountermeasure.upsert({
+    where: {
+      nodeId_slug: {
+        nodeId: corpNode.id,
+        slug: 'blaster-ice-01',
+      },
+    },
+    update: {},
+    create: {
       slug: 'blaster-ice-01',
       name: 'Blaster ICE',
       type: 'GRAY',
