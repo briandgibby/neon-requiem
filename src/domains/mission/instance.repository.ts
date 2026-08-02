@@ -1,18 +1,8 @@
 import { PrismaClient } from '@prisma/client';
+import type { InstanceAlertUpdateResult } from './mission.types';
 
 const ALERT_LEVELS = ['GREEN', 'YELLOW', 'RED'] as const;
 type AlertLevel = typeof ALERT_LEVELS[number];
-export type InstanceAlertUpdateResult =
-  | 'escalated'
-  | 'source-updated'
-  | 'unchanged'
-  | 'not-in-instance'
-  | 'inactive-instance';
-
-export interface InstanceAlertAuthority {
-  escalateAlertFromRoom(roomId: string, newLevel: string): Promise<InstanceAlertUpdateResult>;
-  ensureAlertFromRoom(roomId: string, newLevel: string): Promise<InstanceAlertUpdateResult>;
-}
 
 export class InstanceRepository {
   constructor(private readonly db: PrismaClient) {}

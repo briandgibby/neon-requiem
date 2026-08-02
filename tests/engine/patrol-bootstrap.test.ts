@@ -63,6 +63,12 @@ function createWorldPolicy(safeRoomIds: string[] = [], instanceRoomIds: string[]
   };
 }
 
+function createMobTemplates() {
+  return {
+    getMobTemplate: jest.fn((id: string) => Promise.resolve(id === template.id ? template : null)),
+  };
+}
+
 describe('PatrolBootstrap', () => {
   it('materializes an enabled persisted definition as a patrol-state ECS mob', async () => {
     const registry = new EcsRegistry();
@@ -72,10 +78,12 @@ describe('PatrolBootstrap', () => {
         slug: 'arcology-sweep',
         startRoomSlug: 'room-one',
         routeRoomSlugs: ['room-one', 'room-two', 'room-three'],
-        mobTemplate: template,
+        mobTemplateId: template.id,
       }]),
     };
-    const bootstrap = new PatrolBootstrap(registry, definitions, createWorldPolicy(), { warn: jest.fn() });
+    const bootstrap = new PatrolBootstrap(
+      registry, definitions, createWorldPolicy(), createMobTemplates(), { warn: jest.fn() },
+    );
 
     await expect(bootstrap.load()).resolves.toBe(1);
 
@@ -96,10 +104,12 @@ describe('PatrolBootstrap', () => {
     const definitions = {
       listEnabled: jest.fn().mockResolvedValue([{
         id: 'patrol-1', slug: 'arcology-sweep', startRoomSlug: 'room-one',
-        routeRoomSlugs: ['room-one', 'room-two'], mobTemplate: template,
+        routeRoomSlugs: ['room-one', 'room-two'], mobTemplateId: template.id,
       }]),
     };
-    const bootstrap = new PatrolBootstrap(registry, definitions, createWorldPolicy(), { warn: jest.fn() });
+    const bootstrap = new PatrolBootstrap(
+      registry, definitions, createWorldPolicy(), createMobTemplates(), { warn: jest.fn() },
+    );
 
     await expect(bootstrap.load()).resolves.toBe(1);
     await expect(bootstrap.load()).resolves.toBe(0);
@@ -111,13 +121,40 @@ describe('PatrolBootstrap', () => {
     const definitions = {
       listEnabled: jest.fn().mockResolvedValue([{
         id: 'patrol-1', slug: 'arcology-sweep', startRoomSlug: 'room-one',
-        routeRoomSlugs: ['room-one', 'room-two'], mobTemplate: template,
+        routeRoomSlugs: ['room-one', 'room-two'], mobTemplateId: template.id,
       }]),
     };
-    const bootstrap = new PatrolBootstrap(registry, definitions, createWorldPolicy(), { warn: jest.fn() });
+    const bootstrap = new PatrolBootstrap(
+      registry, definitions, createWorldPolicy(), createMobTemplates(), { warn: jest.fn() },
+    );
 
     await expect(Promise.all([bootstrap.load(), bootstrap.load()])).resolves.toEqual([1, 0]);
     expect(registry.getEntitiesWith([ComponentTypes.PatrolDefinition])).toHaveLength(1);
+  });
+
+  it('isolates a definition whose combat-owned mob template no longer exists', async () => {
+    const registry = new EcsRegistry();
+    const definitions = {
+      listEnabled: jest.fn().mockResolvedValue([{
+        id: 'patrol-1', slug: 'arcology-sweep', startRoomSlug: 'room-one',
+        routeRoomSlugs: ['room-one', 'room-two'], mobTemplateId: 'missing-template',
+      }]),
+    };
+    const diagnostics = { warn: jest.fn() };
+    const bootstrap = new PatrolBootstrap(
+      registry,
+      definitions,
+      createWorldPolicy(),
+      createMobTemplates(),
+      diagnostics,
+    );
+
+    await expect(bootstrap.load()).resolves.toBe(0);
+    expect(diagnostics.warn).toHaveBeenCalledWith(
+      expect.objectContaining({ patrolDefinitionId: 'patrol-1' }),
+      'Skipped invalid patrol definition',
+    );
+    expect(registry.getEntitiesWith([ComponentTypes.PatrolDefinition])).toHaveLength(0);
   });
 
   it('isolates invalid, non-adjacent, safe-zone, and instance-scoped routes', async () => {
@@ -127,32 +164,32 @@ describe('PatrolBootstrap', () => {
       listEnabled: jest.fn().mockResolvedValue([
         {
           id: 'bad-json', slug: 'bad-json', startRoomSlug: 'room-one',
-          routeRoomSlugs: 'room-one', mobTemplate: template,
+          routeRoomSlugs: 'room-one', mobTemplateId: template.id,
         },
         {
           id: 'bad-start', slug: 'bad-start', startRoomSlug: 'room-two',
-          routeRoomSlugs: ['room-one', 'room-two'], mobTemplate: template,
+          routeRoomSlugs: ['room-one', 'room-two'], mobTemplateId: template.id,
         },
         {
           id: 'safe-route', slug: 'safe-route', startRoomSlug: 'room-three',
-          routeRoomSlugs: ['room-three', 'room-four'], mobTemplate: template,
+          routeRoomSlugs: ['room-three', 'room-four'], mobTemplateId: template.id,
         },
         {
           id: 'non-adjacent', slug: 'non-adjacent', startRoomSlug: 'room-one',
-          routeRoomSlugs: ['room-one', 'room-three'], mobTemplate: template,
+          routeRoomSlugs: ['room-one', 'room-three'], mobTemplateId: template.id,
         },
         {
           id: 'instance-route', slug: 'instance-route', startRoomSlug: 'room-one',
-          routeRoomSlugs: ['room-one', 'room-two'], mobTemplate: template,
+          routeRoomSlugs: ['room-one', 'room-two'], mobTemplateId: template.id,
         },
         {
           id: 'repeated-room', slug: 'repeated-room', startRoomSlug: 'room-one',
-          routeRoomSlugs: ['room-one', 'room-two', 'room-one'], mobTemplate: template,
+          routeRoomSlugs: ['room-one', 'room-two', 'room-one'], mobTemplateId: template.id,
         },
       ]),
     };
     const diagnostics = { warn: jest.fn() };
-    const bootstrap = new PatrolBootstrap(registry, definitions, worldPolicy, diagnostics);
+    const bootstrap = new PatrolBootstrap(registry, definitions, worldPolicy, createMobTemplates(), diagnostics);
 
     await expect(bootstrap.load()).resolves.toBe(0);
     expect(diagnostics.warn).toHaveBeenCalledTimes(6);

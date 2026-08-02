@@ -1,25 +1,26 @@
 import { PrismaClient } from '@prisma/client';
-import { MobTemplateRecord } from '../combat/combat.types';
 
-export interface PersistedPatrolDefinition {
+export interface PatrolDefinitionRecord {
   id: string;
   slug: string;
   startRoomSlug: string;
   routeRoomSlugs: unknown;
-  mobTemplate: MobTemplateRecord;
+  mobTemplateId: string;
 }
 
-export interface PatrolDefinitionSource {
-  listEnabled(): Promise<PersistedPatrolDefinition[]>;
-}
-
-export class PatrolDefinitionRepository implements PatrolDefinitionSource {
+export class PatrolDefinitionRepository {
   constructor(private readonly db: PrismaClient) {}
 
-  async listEnabled(): Promise<PersistedPatrolDefinition[]> {
+  async listEnabled(): Promise<PatrolDefinitionRecord[]> {
     const definitions = await this.db.patrolDefinition.findMany({
       where: { enabled: true },
-      include: { startRoom: true, mobTemplate: true },
+      select: {
+        id: true,
+        slug: true,
+        mobTemplateId: true,
+        routeRoomSlugs: true,
+        startRoom: { select: { slug: true } },
+      },
       orderBy: { slug: 'asc' },
     });
 
@@ -28,7 +29,7 @@ export class PatrolDefinitionRepository implements PatrolDefinitionSource {
       slug: definition.slug,
       startRoomSlug: definition.startRoom.slug,
       routeRoomSlugs: definition.routeRoomSlugs,
-      mobTemplate: definition.mobTemplate as MobTemplateRecord,
+      mobTemplateId: definition.mobTemplateId,
     }));
   }
 }

@@ -21,7 +21,7 @@
   - `cd client; npm exec -- tsc -b`: passes.
   - `cd client; npm run build`: passes under Node `v22.22.2` after reinstalling frontend dependencies with optional native packages.
   - `cd client; npm run lint`: passes with no rule suppressions (verified 2026-08-02).
-  - Latest full backend regression run: **41 suites / 276 tests** pass (verified 2026-08-02).
+  - Latest full backend regression run: **41 suites / 284 tests** pass (verified 2026-08-02).
 - Environment setup update:
   - Node `v22.22.2` is installed, but this Codex shell still resolves `node` through `fnm` to `v20.20.2` unless Node 22 is forced into `PATH`.
   - Verified command prefix in this session: `PATH=/home/bdgibby/.local/share/fnm/node-versions/v22.22.2/installation/bin:$PATH`.
@@ -444,6 +444,12 @@ The project has moved from a shallow procedural model to a **Deep Module** archi
    - Added concrete API, character, room, Matrix, POI, ICE, and validation-error types in place of explicit `any` values.
    - Hoisted reusable corner accents and stopped declaring component identities during render; terminal callbacks now declare complete hook dependencies while retaining current Matrix-mode prompts.
    - Full client lint, the client production build, and the backend regression suite pass.
+
+31. **Final Integration Hardening (COMPLETE, 2026-08-02):**
+   - Matrix-jacked characters now survive socket reconnection: disconnect persistence is coalesced, stale socket selections are canceled, and persisted personas restore AP, recovery countdown, and overwatch score into ECS before commands resume.
+   - Concurrent restores of the same Matrix host reuse one ECS node and ICE authority, and stale database links are normalized back to physical mode.
+   - Mission alert propagation and persisted patrol loading now cross explicit service boundaries; the World domain exposes template IDs and the Combat domain resolves the owned mob records.
+   - Added overlap regressions for disconnect waiting, canceled session restoration, concurrent Matrix-node creation, and missing patrol templates.
 
 ---
 

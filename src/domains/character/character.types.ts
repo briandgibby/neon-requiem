@@ -70,6 +70,8 @@ export interface CharacterRecord {
   maxStun: number;
   currentMana: number;
   maxMana: number;
+  currentAp: number;
+  apRecoveryTicks: number;
   manaRegenRate: number;
   manaRegenBuff: number;
   armorValue: number;
@@ -86,6 +88,7 @@ export interface CharacterRecord {
 
   isJackedIn: boolean;
   activeNodeId: string | null;
+  matrixOverwatchScore: number;
   equippedDeckId: string | null;
   activeAuraId: string | null;
 

@@ -47,3 +47,10 @@ export interface MissionExfilResult {
   payout: number;
   xpGained: number;
 }
+
+export type InstanceAlertUpdateResult =
+  | 'escalated'
+  | 'source-updated'
+  | 'unchanged'
+  | 'not-in-instance'
+  | 'inactive-instance';

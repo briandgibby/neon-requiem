@@ -70,12 +70,23 @@ export class MatrixRepository {
     });
   }
 
-  async updateCharacterLink(characterId: string, nodeId: string | null, isJackedIn: boolean) {
+  async updateCharacterLink(
+    characterId: string,
+    nodeId: string | null,
+    isJackedIn: boolean,
+    sessionState?: { currentAp: number; recoveryTicks: number; overwatchScore: number },
+  ) {
     return this.db.character.update({
       where: { id: characterId },
       data: {
         activeNodeId: nodeId,
-        isJackedIn
+        isJackedIn,
+        ...(sessionState ? {
+          currentAp: sessionState.currentAp,
+          apRecoveryTicks: sessionState.recoveryTicks,
+          matrixOverwatchScore: sessionState.overwatchScore,
+        } : {}),
+        ...(!isJackedIn ? { matrixOverwatchScore: 0 } : {}),
       }
     });
   }

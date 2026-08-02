@@ -78,6 +78,8 @@ describe('CombatService', () => {
     maxStun: 100,
     currentMana: 0,
     maxMana: 0,
+    currentAp: MAX_AP,
+    apRecoveryTicks: 0,
     level: 1,
     agility: 5,
     dexterity: 5,
@@ -108,6 +110,27 @@ describe('CombatService', () => {
         'entity-1', 
         'player_id', 
         expect.objectContaining({ characterId: 'char_1' })
+      );
+    });
+
+    it('restores zero-AP characters into recovery instead of action-locking them', async () => {
+      mockCharRepo.findByIdAndAccount.mockResolvedValue({
+        ...mockCharacter,
+        currentAp: 0,
+        apRecoveryTicks: 3,
+      });
+      mockEcsRegistry.getEntityByComponent.mockReturnValue(undefined);
+
+      await service.joinCombat('char_1', 'acc_1', 'room_1');
+
+      expect(mockEcsRegistry.addComponent).toHaveBeenCalledWith('entity-1', 'ap', expect.objectContaining({
+        current: 0,
+        recoveryTicks: 3,
+      }));
+      expect(mockEcsRegistry.addComponent).toHaveBeenCalledWith(
+        'entity-1',
+        'combat_status',
+        expect.objectContaining({ state: 'recovering' }),
       );
     });
   });

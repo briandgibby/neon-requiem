@@ -23,7 +23,7 @@ import {
 import { PlayerEntityFactory } from '../../engine/ecs/factories/player-entity-factory';
 
 import { PlayerSyncCoordinator } from '../../engine/player-sync-coordinator';
-import { InstanceAlertAuthority } from '../mission/instance.repository';
+import type { InstanceAlertAuthority } from '../mission/instance-alert.service';
 
 export class CombatService implements Tickable {
   readonly name = 'CombatService';
@@ -49,6 +49,10 @@ export class CombatService implements Tickable {
     if (_tickCount % 20 === 0) {
       await this.syncCoordinator.syncAllPlayers();
     }
+  }
+
+  getMobTemplate(id: string): Promise<MobTemplateRecord | null> {
+    return this.mobRepo.findById(id);
   }
 
   async getOrCreateEcsSession(roomId: string): Promise<string> {
@@ -130,14 +134,14 @@ export class CombatService implements Tickable {
     entityId = PlayerEntityFactory.createFromRecord(this.ecsRegistry, character, roomId);
 
     this.ecsRegistry.addComponent<ApComponent>(entityId, ComponentTypes.Ap, {
-      current: MAX_AP,
+      current: character.currentAp,
       max: MAX_AP,
       lastRegenAt: Date.now(),
-      recoveryTicks: 0,
+      recoveryTicks: character.currentAp <= 0 ? Math.max(1, character.apRecoveryTicks) : 0,
     });
 
     this.ecsRegistry.addComponent<CombatStatusComponent>(entityId, ComponentTypes.CombatStatus, {
-      state: 'engaged',
+      state: character.currentAp <= 0 ? 'recovering' : 'engaged',
       isPetActive: false,
       sessionId,
     });

@@ -2,6 +2,8 @@ import { PlayerSyncCoordinator } from '../../src/engine/player-sync-coordinator'
 import { EcsRegistry } from '../../src/engine/ecs/registry';
 import {
   ComponentTypes,
+  ApComponent,
+  DeckerComponent,
   HealthComponent,
   ManaComponent,
   PlayerIdComponent,
@@ -39,7 +41,22 @@ describe('PlayerSyncCoordinator', () => {
 
   it('persists final snapshot and audit log in one transaction before destroying the entity', async () => {
     const registry = new EcsRegistry();
-    createPlayer(registry);
+    const entityId = createPlayer(registry);
+    registry.addComponent<ApComponent>(entityId, ComponentTypes.Ap, {
+      current: 2,
+      max: 6,
+      lastRegenAt: 0,
+      recoveryTicks: 3,
+    });
+    registry.addComponent<DeckerComponent>(entityId, ComponentTypes.Decker, {
+      activeNodeEntityId: 'matrix-node-1',
+      physicalRoomId: 'physical-room-1',
+      attack: 5,
+      sleaze: 4,
+      firewall: 3,
+      biofeedbackBuffer: 2,
+      overwatchScore: 37,
+    });
 
     const tx = {
       character: { update: jest.fn().mockResolvedValue(undefined) },
@@ -61,6 +78,9 @@ describe('PlayerSyncCoordinator', () => {
         currentStun: 13,
         currentMana: 7,
         currentRoomId: 'physical-room-1',
+        currentAp: 2,
+        apRecoveryTicks: 3,
+        matrixOverwatchScore: 37,
       },
     });
     expect(tx.auditLog.create).toHaveBeenCalledWith(expect.objectContaining({
@@ -92,5 +112,49 @@ describe('PlayerSyncCoordinator', () => {
       severity: 'CRITICAL',
       characterId: 'char-1',
     }));
+  });
+
+  it('coalesces concurrent disconnects before a replacement session is restored', async () => {
+    const registry = new EcsRegistry();
+    createPlayer(registry);
+
+    let releaseTransaction!: () => void;
+    const transactionGate = new Promise<void>((resolve) => {
+      releaseTransaction = resolve;
+    });
+    const tx = {
+      character: { update: jest.fn().mockResolvedValue(undefined) },
+      auditLog: { create: jest.fn().mockResolvedValue(undefined) },
+    };
+    const db = {
+      $transaction: jest.fn(async (callback: (client: typeof tx) => Promise<void>) => {
+        await transactionGate;
+        return callback(tx);
+      }),
+    };
+    const coordinator = new PlayerSyncCoordinator(db as any, registry, { log: jest.fn() } as any);
+
+    const first = coordinator.handlePlayerDisconnect('char-1');
+    const replacementWait = coordinator.waitForPlayerDisconnect('char-1');
+
+    expect(replacementWait).toBe(first);
+    expect(db.$transaction).toHaveBeenCalledTimes(1);
+
+    releaseTransaction();
+    await Promise.all([first, replacementWait]);
+
+    expect(registry.entityCount).toBe(0);
+  });
+
+  it('does not start a disconnect when a selection only waits for prior persistence', async () => {
+    const registry = new EcsRegistry();
+    createPlayer(registry);
+    const db = { $transaction: jest.fn() };
+    const coordinator = new PlayerSyncCoordinator(db as any, registry, { log: jest.fn() } as any);
+
+    await coordinator.waitForPlayerDisconnect('char-1');
+
+    expect(db.$transaction).not.toHaveBeenCalled();
+    expect(registry.entityCount).toBe(1);
   });
 });

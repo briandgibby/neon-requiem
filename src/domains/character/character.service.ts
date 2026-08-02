@@ -5,7 +5,7 @@ import { RACE_DATA } from '../../shared/races';
 import { CLASS_DATA } from '../../shared/classes';
 import { ConflictError, NotFoundError, ValidationError } from '../../shared/errors';
 import { Race, ClassName } from '../../shared/types';
-import { STARTING_ROOM_SHADOW, STARTING_ROOM_CORP, MAX_STARTING_KARMA } from '../../shared/constants';
+import { STARTING_ROOM_SHADOW, STARTING_ROOM_CORP, MAX_AP, MAX_STARTING_KARMA } from '../../shared/constants';
 import { z } from 'zod';
 
 const VALID_MENTOR_SPIRITS = new Set(['bear', 'gator', 'cat', 'eagle', 'wolf', 'rat', 'valkyrie', 'chaos']);
@@ -166,6 +166,8 @@ export class CharacterService {
       maxStun: 50 + (input.willpower * 10) + (input.logic * 5),
       currentMana: classData.isAwakened ? 50 + (input.willpower * 10) + (input.charisma * 5) : 0,
       maxMana: classData.isAwakened ? 50 + (input.willpower * 10) + (input.charisma * 5) : 0,
+      currentAp: MAX_AP,
+      apRecoveryTicks: 0,
       manaRegenRate: 5,
       manaRegenBuff: 0,
       armorValue: 0,
@@ -184,6 +186,7 @@ export class CharacterService {
 
       isJackedIn: false,
       activeNodeId: null,
+      matrixOverwatchScore: 0,
       equippedDeckId: null,
       activeAuraId: null,
 

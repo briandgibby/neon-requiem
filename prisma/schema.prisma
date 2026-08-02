@@ -77,6 +77,8 @@ model Character {
   maxStun     Int @default(100)
   currentMana Int @default(100)
   maxMana     Int @default(100)
+  currentAp   Int @default(6)
+  apRecoveryTicks Int @default(0)
   manaRegenRate Int @default(5) // Mana restored per regen tick
   manaRegenBuff Int @default(0) // Remaining ticks of reagent HoT
   armorValue Int @default(0)
@@ -96,6 +98,7 @@ model Character {
   isJackedIn   Boolean @default(false)
   activeNodeId String?
   activeNode   MatrixNode? @relation(fields: [activeNodeId], references: [id])
+  matrixOverwatchScore Int @default(0)
   
   activeAuraId String?
   activeAura   AdeptPower? @relation("ActiveAura", fields: [activeAuraId], references: [id])

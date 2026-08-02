@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { ForbiddenError } from '../../shared/errors';
-import { SnapshotHistoryQuery } from './snapshot-history.repository';
+import type { SnapshotHistoryQuery } from './snapshot-history.repository';
 
 const persistedSnapshotSchema = z.object({
   snapshot: z.object({
@@ -30,10 +30,20 @@ interface SnapshotHistoryStore {
   findSnapshots(query: SnapshotHistoryQuery): Promise<SnapshotHistoryRow[]>;
 }
 
+interface SnapshotHistoryResult {
+  snapshots: Array<{
+    id: string;
+    recordedAt: string;
+    capturedAt: string;
+    character: { id: string; name: string };
+    state: { hp: number; stun: number; mana: number; roomId: string };
+  }>;
+}
+
 export class SnapshotHistoryService {
   constructor(private readonly repository: SnapshotHistoryStore) {}
 
-  async listSnapshots(accountId: string, rawQuery: unknown) {
+  async listSnapshots(accountId: string, rawQuery: unknown): Promise<SnapshotHistoryResult> {
     if (!await this.repository.isAccountAdmin(accountId)) throw new ForbiddenError();
 
     const query = snapshotHistoryQuerySchema.parse(rawQuery);

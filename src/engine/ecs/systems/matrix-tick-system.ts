@@ -2,7 +2,7 @@ import { EcsRegistry } from '../registry';
 import { Tickable } from '../../heartbeat';
 import { ComponentTypes, MatrixNodeComponent } from '../components';
 import { MatrixRepository } from '../../../domains/matrix/matrix.repository';
-import { InstanceAlertAuthority } from '../../../domains/mission/instance.repository';
+import type { InstanceAlertAuthority } from '../../../domains/mission/instance-alert.service';
 
 interface InstanceAlertSyncSource extends InstanceAlertAuthority {
   findInstanceByRoomId(roomId: string): Promise<{

@@ -53,6 +53,7 @@ import { registerCharacterRoutes } from './domains/character/character.routes';
 import { WorldRepository } from './domains/world/world.repository';
 import { WorldService } from './domains/world/world.service';
 import { PatrolDefinitionRepository } from './domains/world/patrol-definition.repository';
+import { PatrolDefinitionService } from './domains/world/patrol-definition.service';
 import { PatrolBootstrap } from './engine/patrol-bootstrap';
 import { registerWorldRoutes } from './domains/world/world.routes';
 import { CombatRepository } from './domains/combat/combat.repository';
@@ -66,6 +67,7 @@ import { MatrixService } from './domains/matrix/matrix.service';
 import { registerMatrixRoutes } from './domains/matrix/matrix.routes';
 import { MissionRepository } from './domains/mission/mission.repository';
 import { MissionService } from './domains/mission/mission.service';
+import { InstanceAlertService } from './domains/mission/instance-alert.service';
 import { MissionGenerator } from './domains/mission/mission.generator';
 import { registerMissionRoutes } from './domains/mission/mission.routes';
 import { ShopRepository } from './domains/shop/shop.repository';
@@ -152,13 +154,14 @@ async function bootstrap() {
   const matrixRepo = new MatrixRepository(db);
   const missionRepo = new MissionRepository(db);
   const instanceRepo = new InstanceRepository(db);
+  const instanceAlerts = new InstanceAlertService(instanceRepo);
   let missionService!: MissionService;
   const matrixService = new MatrixService(
     matrixRepo,
     ecsRegistry,
     moveDispatcher,
     async (roomId, nodeEntityId) => missionService.wireNodeToMissionTargets(roomId, nodeEntityId),
-    instanceRepo,
+    instanceAlerts,
   );
   registerMatrixRoutes(app, matrixService, authService);
 
@@ -178,7 +181,7 @@ async function bootstrap() {
     ecsRegistry,
     moveDispatcher,
     syncCoordinator,
-    instanceRepo,
+    instanceAlerts,
   );
   registerCombatRoutes(app, combatService, authService);
 
@@ -193,8 +196,8 @@ async function bootstrap() {
   const shopService = new ShopService(shopRepo, worldRepo, charRepo);
   registerShopRoutes(app, shopService, authService);
 
-  const patrolDefinitions = new PatrolDefinitionRepository(db);
-  await new PatrolBootstrap(ecsRegistry, patrolDefinitions, worldService, app.log).load();
+  const patrolDefinitions = new PatrolDefinitionService(new PatrolDefinitionRepository(db));
+  await new PatrolBootstrap(ecsRegistry, patrolDefinitions, worldService, combatService, app.log).load();
 
   const socketHub = new SocketHub(app.server, authService, roomPresence, syncCoordinator);
   const roomEvents: RoomEventPublisher = {
@@ -207,9 +210,9 @@ async function bootstrap() {
   heartbeat.subscribe(new RegenSystem(ecsRegistry));
   heartbeat.subscribe(new CombatTickSystem(ecsRegistry));
   heartbeat.subscribe(new CombatReinforcementSystem(ecsRegistry, combatService, worldService));
-  heartbeat.subscribe(new AlertPatrolSystem(ecsRegistry, worldService, app.log, instanceRepo, roomEvents));
+  heartbeat.subscribe(new AlertPatrolSystem(ecsRegistry, worldService, app.log, instanceAlerts, roomEvents));
   heartbeat.subscribe(new MobAiSystem(ecsRegistry, moveDispatcher, worldService, roomEvents));
-  heartbeat.subscribe(new MatrixTickSystem(ecsRegistry, matrixRepo, instanceRepo));
+  heartbeat.subscribe(new MatrixTickSystem(ecsRegistry, matrixRepo, instanceAlerts));
   heartbeat.subscribe(new IceAiSystem(ecsRegistry));
   heartbeat.subscribe(new MissionSystem(ecsRegistry, (missionId, index) => missionService.updateObjectiveProgress(missionId, index)));
   heartbeat.subscribe(new EntityCleanupSystem(ecsRegistry));
@@ -234,31 +237,67 @@ async function bootstrap() {
 
   socketHub.onConnection(async (socket) => {
     const accountId = socket.data.accountId;
+    let selectionInProgress = false;
 
-    socket.on('select_character', async (data: { characterId: string }) => {
-      try {
-        const character = await charService.getCharacter(data.characterId, accountId);
+    socket.on('select_character', (data: { characterId: string }) => {
+      if (selectionInProgress || socket.data.characterId) return;
+      const signal = socketHub.getSessionSignal(socket);
+      if (!signal) return;
+      selectionInProgress = true;
 
-        socket.data.characterId = character.id;
+      void (async () => {
+        try {
+          await charService.getCharacter(data.characterId, accountId);
+          if (signal.aborted) return;
+          await syncCoordinator.waitForPlayerDisconnect(data.characterId);
+          if (signal.aborted) return;
+          const character = await charService.getCharacter(data.characterId, accountId);
+          if (signal.aborted) return;
 
-        // Send initial room data and establish room presence.
-        if (character.currentRoomId) {
-          const room = await worldService.getRoom(character.currentRoomId) as any;
-          socketHub.selectCharacter(socket, {
-            characterId: character.id,
-            characterName: character.name,
-            roomId: room.id,
-          });
-          room.occupants = socketHub.getRoomOccupants(room.id).filter(o => o.characterId !== character.id);
-          socket.emit('room_data', room);
-          const pois = await worldService.getPOIs(room.zoneId);
-          socket.emit('local_pois', pois);
+          let room: any = null;
+          let pois: Awaited<ReturnType<WorldService['getPOIs']>> = [];
+          if (character.currentRoomId) {
+            room = await worldService.getRoom(character.currentRoomId);
+            if (signal.aborted) return;
+            pois = await worldService.getPOIs(room.zoneId);
+            if (signal.aborted) return;
+          }
+
+          const activeNode = await matrixService.restoreSession(character.id, accountId, signal);
+          if (signal.aborted) return;
+
+          // Publish the selection only after all fallible reads and restoration complete.
+          socket.data.characterId = character.id;
+          if (room) {
+            socketHub.selectCharacter(socket, {
+              characterId: character.id,
+              characterName: character.name,
+              roomId: room.id,
+            });
+            room.occupants = socketHub.getRoomOccupants(room.id).filter(o => o.characterId !== character.id);
+            socket.emit('room_data', room);
+            socket.emit('local_pois', pois);
+          }
+
+          socket.emit('matrix_data', activeNode);
+          socket.emit('message', { text: `Welcome back, ${character.name}. Neural link established.`, type: 'success' });
+        } catch (err) {
+          if (!signal.aborted) {
+            const selectedCharacterId = socket.data.characterId as string | undefined;
+            if (selectedCharacterId) {
+              try {
+                await syncCoordinator.handlePlayerDisconnect(selectedCharacterId);
+              } catch (syncError) {
+                app.log.error({ err: syncError }, 'Failed to roll back character selection');
+              }
+              socketHub.clearSelectedCharacter(socket);
+            }
+            socket.emit('message', { text: 'Failed to select character.', type: 'error' });
+          }
+        } finally {
+          selectionInProgress = false;
         }
-
-        socket.emit('message', { text: `Welcome back, ${character.name}. Neural link established.`, type: 'success' });
-      } catch (err) {
-        socket.emit('message', { text: 'Failed to select character.', type: 'error' });
-      }
+      })();
     });
 
     socket.on('command', async (data: { text: string }) => {

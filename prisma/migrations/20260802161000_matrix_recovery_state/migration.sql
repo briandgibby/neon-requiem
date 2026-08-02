@@ -1,0 +1,2 @@
+ALTER TABLE "characters"
+ADD COLUMN "apRecoveryTicks" INTEGER NOT NULL DEFAULT 0;

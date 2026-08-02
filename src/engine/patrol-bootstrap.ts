@@ -1,4 +1,5 @@
-import { PatrolDefinitionSource, PersistedPatrolDefinition } from '../domains/world/patrol-definition.repository';
+import type { PatrolDefinitionSource, PersistedPatrolDefinition } from '../domains/world/patrol-definition.service';
+import type { CombatService } from '../domains/combat/combat.service';
 import { RoomLookup, SafeZonePolicy } from '../domains/world/world.types';
 import { AiComponent, ComponentTypes, PatrolDefinitionComponent } from './ecs/components';
 import { MobFactory } from './ecs/factories/mob-factory';
@@ -11,6 +12,8 @@ interface PatrolBootstrapDiagnostics {
   warn(obj: unknown, msg: string): void;
 }
 
+type PatrolMobTemplateSource = Pick<CombatService, 'getMobTemplate'>;
+
 export class PatrolBootstrap {
   private readonly loadingDefinitionIds = new Set<string>();
 
@@ -18,6 +21,7 @@ export class PatrolBootstrap {
     private readonly registry: EcsRegistry,
     private readonly definitions: PatrolDefinitionSource,
     private readonly worldPolicy: PatrolWorldPolicy,
+    private readonly mobTemplates: PatrolMobTemplateSource,
     private readonly diagnostics: PatrolBootstrapDiagnostics,
   ) {}
 
@@ -31,9 +35,11 @@ export class PatrolBootstrap {
 
       try {
         const route = await this.resolveRoute(definition);
+        const template = await this.mobTemplates.getMobTemplate(definition.mobTemplateId);
+        if (!template) throw new Error('Patrol mob template does not exist');
         const entityId = MobFactory.createFromTemplate(
           this.registry,
-          definition.mobTemplate,
+          template,
           route[0].id,
           'patrol',
         );

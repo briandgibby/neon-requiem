@@ -9,7 +9,7 @@ import {
   PositionComponent,
 } from '../components';
 import { RoomLookup, SafeZonePolicy } from '../../../domains/world/world.types';
-import { InstanceAlertAuthority } from '../../../domains/mission/instance.repository';
+import type { InstanceAlertAuthority } from '../../../domains/mission/instance-alert.service';
 import { RoomEventPublisher } from '../../room-event-publisher';
 
 interface AlertPatrolWorldPolicy extends SafeZonePolicy, RoomLookup {}
