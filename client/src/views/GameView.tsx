@@ -9,22 +9,49 @@ import { useHotkeys } from '../hooks/useHotkeys';
 import { apiUrl } from '../lib/api';
 import { resolveHotkey } from '../lib/hotkeys';
 import type { HotkeyMap } from '../lib/hotkeys';
+import { CornerAccents } from '../components/CornerAccents';
+import type { Character } from '../types';
 
-interface Character {
-  id: string;
+interface NamedEntity {
   name: string;
-  level: number;
-  faction: string;
-  className: string;
+}
+
+interface RoomData {
+  name: string;
+  description: string;
+  slug?: string;
+  gridX?: number;
+  gridY?: number;
+  exits?: Record<string, string>;
+  occupants?: NamedEntity[];
+  zone?: { name: string; slug: string };
+}
+
+interface MatrixIce {
+  id: string;
+  name?: string;
+  slug?: string;
+  type: string;
   currentHp: number;
   maxHp: number;
-  currentStun?: number;
-  maxStun?: number;
-  armorValue: number;
-  isJackedIn?: boolean;
-  areaKnowledge?: string[];
-  hotkeys?: HotkeyMap;
 }
+
+interface MatrixData {
+  name?: string;
+  nodeId?: string;
+  securityLevel?: number;
+  alertLevel?: string;
+  occupants?: NamedEntity[];
+  activeIC?: MatrixIce[];
+}
+
+interface LocalPoi {
+  slug: string;
+  name: string;
+  poiCategory: string;
+}
+
+const EMPTY_HOTKEYS: HotkeyMap = {};
 
 interface RoomOccupant {
   characterId: string;
@@ -39,7 +66,6 @@ interface ChatMessage {
 
 interface GameViewProps {
   token: string;
-  user: { username: string };
   character: Character;
   onLogout: () => void;
 }
@@ -47,9 +73,9 @@ interface GameViewProps {
 export const GameView: React.FC<GameViewProps> = ({ token, character, onLogout }) => {
   const { socket, isConnected } = useSocket(token);
   const [charData, setCharData] = useState<Character>(character);
-  const [roomData, setRoomData] = useState<any>(null);
-  const [matrixData, setMatrixData] = useState<any>(null);
-  const [localPois, setLocalPois] = useState<any[]>([]);
+  const [roomData, setRoomData] = useState<RoomData | null>(null);
+  const [matrixData, setMatrixData] = useState<MatrixData | null>(null);
+  const [localPois, setLocalPois] = useState<LocalPoi[]>([]);
   const [roomOccupants, setRoomOccupants] = useState<RoomOccupant[]>([]);
   const [commands, setCommands] = useState<CommandMetadata[]>([]);
   const terminalRef = useRef<TerminalHandle>(null);
@@ -61,7 +87,7 @@ export const GameView: React.FC<GameViewProps> = ({ token, character, onLogout }
   } = useHotkeys({
     token,
     characterId: character.id,
-    initialHotkeys: character.hotkeys ?? {},
+    initialHotkeys: character.hotkeys ?? EMPTY_HOTKEYS,
     onError: (message) => terminalRef.current?.writeln(`\x1b[31m${message}\x1b[0m`),
   });
 
@@ -102,7 +128,7 @@ export const GameView: React.FC<GameViewProps> = ({ token, character, onLogout }
       }
     });
 
-    const formatOccupants = (occupants: any[]) => {
+    const formatOccupants = (occupants: NamedEntity[]) => {
       const counts: Record<string, number> = {};
       occupants.forEach(o => {
         counts[o.name] = (counts[o.name] || 0) + 1;
@@ -112,7 +138,7 @@ export const GameView: React.FC<GameViewProps> = ({ token, character, onLogout }
         .join(', ');
     };
 
-    socket.on('matrix_data', (data: any) => {
+    socket.on('matrix_data', (data: MatrixData | null) => {
       setMatrixData(data);
       setCharData(prev => ({ ...prev, isJackedIn: !!data }));
       if (terminalRef.current && data) {
@@ -130,7 +156,7 @@ export const GameView: React.FC<GameViewProps> = ({ token, character, onLogout }
       }
     });
 
-    socket.on('room_data', (data: any) => {
+    socket.on('room_data', (data: RoomData) => {
       setRoomData(data);
       if (terminalRef.current) {
         terminalRef.current.writeln(`\r\n\x1b[1;36m[ ${data.name} ]\x1b[0m`);
@@ -156,7 +182,7 @@ export const GameView: React.FC<GameViewProps> = ({ token, character, onLogout }
       setCharData(prev => ({ ...prev, ...data }));
     });
 
-    socket.on('local_pois', (data: any[]) => {
+    socket.on('local_pois', (data: LocalPoi[]) => {
       setLocalPois(data);
     });
 
@@ -208,16 +234,11 @@ export const GameView: React.FC<GameViewProps> = ({ token, character, onLogout }
     dispatchCommand(resolveHotkey(input, hotkeys));
   };
 
-  const CornerAccents = () => (
-    <>
-      <div className="corner-accent corner-tl" />
-      <div className="corner-accent corner-tr" />
-      <div className="corner-accent corner-bl" />
-      <div className="corner-accent corner-br" />
-    </>
+  const hasMapAccess = Boolean(
+    roomData?.zone?.slug && charData.areaKnowledge?.includes(roomData.zone.slug),
   );
 
-  const Commlink: React.FC = () => {
+  const renderCommlink = () => {
     return (
       <div className="flex-1 flex flex-col gap-4">
         <div className={`text-[10px] font-bold border-b pb-2 ${charData.isJackedIn ? 'border-cyan-500/20' : 'border-[#00ff41]/20'} flex justify-between`}>
@@ -274,7 +295,7 @@ export const GameView: React.FC<GameViewProps> = ({ token, character, onLogout }
                <div>
                  <div className="text-[8px] opacity-40 uppercase tracking-widest mb-2 flex justify-between">
                    <span>Local Points of Interest</span>
-                   {charData.areaKnowledge?.includes(roomData?.zone?.slug) ? (
+                   {hasMapAccess ? (
                      <span className="text-blue-400 font-bold">[ MAP UNLOCKED ]</span>
                    ) : (
                      <span className="text-pink-500 font-bold">[ NO MAP DATA ]</span>
@@ -282,7 +303,7 @@ export const GameView: React.FC<GameViewProps> = ({ token, character, onLogout }
                  </div>
                  
                  <div className="space-y-1">
-                   {charData.areaKnowledge?.includes(roomData?.zone?.slug) ? (
+                   {hasMapAccess ? (
                      localPois.length > 0 ? (
                        localPois.map(poi => (
                          <button 
@@ -359,7 +380,7 @@ export const GameView: React.FC<GameViewProps> = ({ token, character, onLogout }
             <MapIcon size={16} />
             <span className="tracking-widest uppercase">{charData.isJackedIn ? 'Cyberdeck' : 'Commlink'}</span>
           </div>
-          <Commlink />
+          {renderCommlink()}
         </div>
 
         <div className={`h-40 neon-panel p-4 flex flex-col justify-between ${charData.isJackedIn ? 'border-cyan-500/50 shadow-[0_0_15px_rgba(34,211,238,0.2)]' : ''}`}>
@@ -402,6 +423,7 @@ export const GameView: React.FC<GameViewProps> = ({ token, character, onLogout }
         <div className={`h-72 neon-panel p-4 flex flex-col ${charData.isJackedIn ? 'border-cyan-500/50 shadow-[0_0_15px_rgba(34,211,238,0.2)]' : ''}`}>
           <CornerAccents />
           <CommandPicker
+            key={charData.isJackedIn ? 'matrix' : 'physical'}
             commands={commands}
             hotkeys={hotkeys}
             argumentOptions={{
@@ -409,12 +431,12 @@ export const GameView: React.FC<GameViewProps> = ({ token, character, onLogout }
                 value: direction,
                 label: direction.toUpperCase(),
               })),
-              poi: charData.areaKnowledge?.includes(roomData?.zone?.slug)
+              poi: hasMapAccess
                 ? localPois.map((poi) => ({ value: poi.slug, label: poi.name }))
                 : [],
               ice: (matrixData?.activeIC ?? [])
-                .filter((ice: any) => ice.currentHp > 0)
-                .map((ice: any) => ({
+                .filter((ice) => ice.currentHp > 0)
+                .map((ice) => ({
                   value: ice.id,
                   label: `${ice.name ?? ice.slug ?? ice.type} (${ice.currentHp}/${ice.maxHp})`,
                 })),

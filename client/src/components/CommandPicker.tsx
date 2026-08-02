@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import type { HotkeyMap } from '../lib/hotkeys';
 import { composePickerCommand } from '../lib/command-picker';
 import type { CommandArgumentSource, CommandArgumentSuggestionSource } from '../lib/command-picker';
@@ -43,9 +43,7 @@ export function CommandPicker({
   onRemoveHotkey,
   isSavingHotkey = false,
 }: CommandPickerProps) {
-  const [selectedAlias, setSelectedAlias] = useState('');
-  const [args, setArgs] = useState('');
-  const [selectedArgument, setSelectedArgument] = useState('');
+  const [draft, setDraft] = useState({ alias: '', args: '', selectedArgument: '' });
   const [hotkeyTrigger, setHotkeyTrigger] = useState('');
   const activeMode: CommandMode = isMatrixMode ? 'matrix' : 'physical';
 
@@ -57,23 +55,12 @@ export function CommandPicker({
     ));
   }, [activeMode, commands]);
 
-  const selectedCommand = visibleCommands.find((command) => command.aliases[0] === selectedAlias)
-    ?? visibleCommands[0];
-
-  useEffect(() => {
-    if (!selectedCommand) {
-      setSelectedAlias('');
-      setArgs('');
-      setSelectedArgument('');
-      return;
-    }
-
-    if (selectedAlias !== selectedCommand.aliases[0]) {
-      setSelectedAlias(selectedCommand.aliases[0]);
-      setArgs('');
-      setSelectedArgument('');
-    }
-  }, [selectedAlias, selectedCommand]);
+  const selectedAlias = visibleCommands.some((command) => command.aliases[0] === draft.alias)
+    ? draft.alias
+    : visibleCommands[0]?.aliases[0] ?? '';
+  const selectedCommand = visibleCommands.find((command) => command.aliases[0] === selectedAlias);
+  const args = draft.alias === selectedAlias ? draft.args : '';
+  const selectedArgument = draft.alias === selectedAlias ? draft.selectedArgument : '';
 
   const availableArguments = selectedCommand?.argumentSource
     ? argumentOptions[selectedCommand.argumentSource] ?? []
@@ -94,9 +81,7 @@ export function CommandPicker({
   };
 
   const handleQuickCommand = (command: CommandMetadata) => {
-    setSelectedAlias(command.aliases[0]);
-    setArgs('');
-    setSelectedArgument('');
+    setDraft({ alias: command.aliases[0], args: '', selectedArgument: '' });
 
     if (command.usage) {
       return;
@@ -108,7 +93,7 @@ export function CommandPicker({
   const handleSubmit = () => {
     if (!selectedCommand) return;
     runCommand(selectedCommand, args);
-    setArgs('');
+    setDraft((current) => ({ ...current, alias: selectedAlias, args: '' }));
   };
 
   const handleSaveHotkey = async () => {
@@ -161,7 +146,11 @@ export function CommandPicker({
           <select
             aria-label={`${selectedCommand.label} target`}
             value={selectedArgumentValue}
-            onChange={(event) => setSelectedArgument(event.target.value)}
+            onChange={(event) => setDraft((current) => ({
+              ...current,
+              alias: selectedAlias,
+              selectedArgument: event.target.value,
+            }))}
             disabled={availableArguments.length === 0}
             className={`mt-2 w-full bg-black/80 border px-2 py-1 text-[10px] outline-none disabled:opacity-40 ${
               isMatrixMode ? 'border-cyan-500/30 focus:border-cyan-400 text-cyan-100' : 'border-[#00ff41]/30 focus:border-[#00ff41] text-[#00ff41]'
@@ -179,7 +168,11 @@ export function CommandPicker({
             aria-label={`${selectedCommand.label} arguments`}
             list={availableSuggestions.length > 0 ? 'command-argument-suggestions' : undefined}
             value={args}
-            onChange={(event) => setArgs(event.target.value)}
+            onChange={(event) => setDraft((current) => ({
+              ...current,
+              alias: selectedAlias,
+              args: event.target.value,
+            }))}
             placeholder={selectedCommand.usage}
             className={`mt-2 w-full bg-black/40 border px-2 py-1 text-[10px] outline-none ${
               isMatrixMode ? 'border-cyan-500/30 focus:border-cyan-400 text-cyan-100' : 'border-[#00ff41]/30 focus:border-[#00ff41] text-[#00ff41]'
@@ -211,9 +204,7 @@ export function CommandPicker({
             aria-label="Hotkey command"
             value={selectedCommand?.aliases[0] ?? ''}
             onChange={(event) => {
-              setSelectedAlias(event.target.value);
-              setArgs('');
-              setSelectedArgument('');
+              setDraft({ alias: event.target.value, args: '', selectedArgument: '' });
             }}
             className={`mt-2 w-full bg-black/80 border px-2 py-1 text-[10px] outline-none ${
               isMatrixMode ? 'border-cyan-500/30 focus:border-cyan-400 text-cyan-100' : 'border-[#00ff41]/30 focus:border-[#00ff41] text-[#00ff41]'

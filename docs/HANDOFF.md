@@ -1,7 +1,7 @@
 # Neon Requiem - Project Handoff
 
-**Date:** 2026-05-23
-**Session focus:** Phase 4.4A safe-zone enforcement implemented and focused verification passed.
+**Date:** 2026-08-02
+**Session focus:** All tracked Phase 4.4 follow-ons implemented and verified.
 
 ---
 
@@ -20,7 +20,8 @@
 - Frontend verification:
   - `cd client; npm exec -- tsc -b`: passes.
   - `cd client; npm run build`: passes under Node `v22.22.2` after reinstalling frontend dependencies with optional native packages.
-  - `cd client; npm run lint`: fails on existing lint debt, mostly explicit `any`, React hook rules, static components declared during render, and `useSocket` returning `socketRef.current`.
+  - `cd client; npm run lint`: passes with no rule suppressions (verified 2026-08-02).
+  - Latest full backend regression run: **41 suites / 276 tests** pass (verified 2026-08-02).
 - Environment setup update:
   - Node `v22.22.2` is installed, but this Codex shell still resolves `node` through `fnm` to `v20.20.2` unless Node 22 is forced into `PATH`.
   - Verified command prefix in this session: `PATH=/home/bdgibby/.local/share/fnm/node-versions/v22.22.2/installation/bin:$PATH`.
@@ -437,6 +438,13 @@ The project has moved from a shallow procedural model to a **Deep Module** archi
    - Added a bounded, read-only `/admin/snapshots` endpoint with an optional character ID filter. Responses expose only validated HP, stun, mana, room, and timestamp data rather than arbitrary audit metadata.
    - Added an administrator-only snapshot archive view to the persona screen with filtering and refresh controls.
 
+30. **Frontend Lint Debt (COMPLETE, 2026-08-02):**
+   - Cleared all 49 previously tracked ESLint findings (46 errors and 3 warnings) without suppressing rules.
+   - Replaced render-time ref reads and effect-driven derived state with explicit socket, hotkey queue, authentication, command-draft, and character-creation state transitions.
+   - Added concrete API, character, room, Matrix, POI, ICE, and validation-error types in place of explicit `any` values.
+   - Hoisted reusable corner accents and stopped declaring component identities during render; terminal callbacks now declare complete hook dependencies while retaining current Matrix-mode prompts.
+   - Full client lint, the client production build, and the backend regression suite pass.
+
 ---
 
 ## 4. Immediate Next Steps (Phase 4.4+)
@@ -446,7 +454,7 @@ The project has moved from a shallow procedural model to a **Deep Module** archi
 There are no remaining Phase 4.4 follow-ons in the tracked implementation plans.
 
 **Remaining carry-forward items:**
-- Frontend lint debt in `client/src` (explicit `any`, React hook rules, static components declared during render)
+- None.
 
 
 ---

@@ -393,6 +393,51 @@ describe('MatrixService', () => {
     });
   });
 
+  describe('getActiveNode', () => {
+    it('normalizes the DB fallback to the ECS node view contract', async () => {
+      const registry = new EcsRegistry();
+      const matrixRepo = {
+        getCharacterWithEquipment: jest.fn().mockResolvedValue({ activeNodeId: 'node-db-1' }),
+        findNodeById: jest.fn().mockResolvedValue({
+          id: 'node-db-1',
+          name: 'Blue Static Host',
+          slug: 'blue-static-host',
+          securityLevel: 4,
+          alertLevel: 'YELLOW',
+          roomId: 'room-1',
+          activeIC: [{
+            id: 'ice-db-1',
+            name: 'Patrol IC',
+            slug: 'patrol-ic',
+            type: 'WHITE',
+            currentHp: 15,
+            hp: 20,
+          }],
+        }),
+      };
+      const service = new MatrixService(matrixRepo as any, registry, new MoveDispatcher());
+
+      await expect(service.getActiveNode('char-1', 'account-1')).resolves.toEqual({
+        id: 'node-db-1',
+        nodeId: 'node-db-1',
+        name: 'Blue Static Host',
+        slug: 'blue-static-host',
+        securityLevel: 4,
+        alertLevel: 'YELLOW',
+        linkedRoomId: 'room-1',
+        activeIC: [{
+          id: 'ice-db-1',
+          entityId: 'ice-db-1',
+          name: 'Patrol IC',
+          slug: 'patrol-ic',
+          type: 'WHITE',
+          currentHp: 15,
+          maxHp: 20,
+        }],
+      });
+    });
+  });
+
   describe('performHacking', () => {
     function buildHackingEnv(dispatchSuccess: boolean = true) {
       const registry = new EcsRegistry();

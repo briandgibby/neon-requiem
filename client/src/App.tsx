@@ -5,10 +5,11 @@ import { GameView } from './views/GameView';
 import { CharacterView } from './views/CharacterView';
 import { AdminSnapshotView } from './views/AdminSnapshotView';
 import { Loader2 } from 'lucide-react';
+import type { Character } from './types';
 
 function App() {
   const { token, user, login, register, logout, isLoading } = useAuth();
-  const [selectedCharacter, setSelectedCharacter] = useState<any>(null);
+  const [selectedCharacter, setSelectedCharacter] = useState<Character | null>(null);
   const [showAdmin, setShowAdmin] = useState(false);
 
   if (isLoading) {
@@ -50,8 +51,8 @@ function App() {
 
   return (
     <GameView 
+      key={`${selectedCharacter.id}:${token}`}
       token={token}
-      user={user} 
       character={selectedCharacter} 
       onLogout={() => {
         setSelectedCharacter(null);

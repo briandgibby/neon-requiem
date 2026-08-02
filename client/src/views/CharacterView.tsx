@@ -1,14 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { UserPlus, LogOut, ChevronRight, ChevronLeft, Shield, Zap, Target, Brain, Heart, Star } from 'lucide-react';
 import { apiUrl } from '../lib/api';
+import { CornerAccents } from '../components/CornerAccents';
+import type { Character } from '../types';
 
-interface Character {
-  id: string;
-  name: string;
-  level: number;
-  faction: string;
-  className: string;
-}
+export type { Character } from '../types';
 
 interface CharacterViewProps {
   token: string;
@@ -32,7 +28,7 @@ const RACES = [
   { slug: 'oni', name: 'Oni', description: 'Imposing and strong-willed.' },
   { slug: 'troll', name: 'Troll', description: 'Massive and durable.' },
   { slug: 'minotaur', name: 'Minotaur', description: 'The peak of raw physical might.' },
-];
+] as const;
 
 const CLASSES = [
   { slug: 'street-samurai', name: 'Street Samurai', line: 'combat', desc: 'Frontline chrome-warrior.' },
@@ -49,11 +45,46 @@ const CLASSES = [
   { slug: 'shaman', name: 'Shaman', line: 'awakened', desc: 'Spiritual connection to power.' },
   { slug: 'street-doc', name: 'Street Doc', line: 'awakened', desc: 'Medical support and surgical repairs.' },
   { slug: 'weapons-adept', name: 'Weapons Adept', line: 'awakened', desc: 'Magically enhanced physical combat.' },
-];
+] as const;
+
+const FACTIONS = ['shadow', 'corp'] as const;
+const MENTOR_SPIRITS = ['bear', 'gator', 'cat', 'eagle', 'wolf', 'rat', 'valkyrie', 'chaos'] as const;
+const STAT_NAMES = ['body', 'agility', 'dexterity', 'strength', 'logic', 'intuition', 'willpower', 'charisma', 'luck'] as const;
+
+type Faction = typeof FACTIONS[number];
+type RaceName = typeof RACES[number]['slug'];
+type ClassName = typeof CLASSES[number]['slug'];
+type MentorSpirit = typeof MENTOR_SPIRITS[number];
+type StatName = typeof STAT_NAMES[number];
+
+interface CreationForm {
+  name: string;
+  faction: Faction;
+  race: RaceName;
+  className: ClassName;
+  streetDocPath: 'tech' | 'magic';
+  mentorSpirit: MentorSpirit;
+  body: number;
+  agility: number;
+  dexterity: number;
+  strength: number;
+  logic: number;
+  intuition: number;
+  willpower: number;
+  charisma: number;
+  luck: number;
+}
+
+type RaceStatLimits = Record<StatName, { floor: number; cap: number }>;
+
+interface CreateCharacterPayload extends Omit<CreationForm, 'streetDocPath' | 'mentorSpirit'> {
+  streetDocPath?: CreationForm['streetDocPath'];
+  mentorSpirit?: CreationForm['mentorSpirit'];
+}
 
 const getSelectedClass = (className: string) => CLASSES.find(c => c.slug === className);
 
-const UI_RACE_DATA: any = {
+const UI_RACE_DATA: Record<RaceName, RaceStatLimits> = {
   human: { body: { floor: 1, cap: 6 }, agility: { floor: 1, cap: 6 }, dexterity: { floor: 1, cap: 6 }, strength: { floor: 1, cap: 6 }, logic: { floor: 1, cap: 6 }, intuition: { floor: 1, cap: 6 }, willpower: { floor: 1, cap: 6 }, charisma: { floor: 1, cap: 6 }, luck: { floor: 1, cap: 7 } },
   surge: { body: { floor: 1, cap: 5 }, agility: { floor: 2, cap: 7 }, dexterity: { floor: 2, cap: 7 }, strength: { floor: 1, cap: 5 }, logic: { floor: 1, cap: 6 }, intuition: { floor: 2, cap: 7 }, willpower: { floor: 1, cap: 6 }, charisma: { floor: 1, cap: 6 }, luck: { floor: 1, cap: 7 } },
   elf: { body: { floor: 2, cap: 5 }, agility: { floor: 3, cap: 7 }, dexterity: { floor: 2, cap: 7 }, strength: { floor: 1, cap: 6 }, logic: { floor: 2, cap: 7 }, intuition: { floor: 1, cap: 7 }, willpower: { floor: 1, cap: 6 }, charisma: { floor: 4, cap: 8 }, luck: { floor: 2, cap: 6 } },
@@ -66,6 +97,18 @@ const UI_RACE_DATA: any = {
   oni: { body: { floor: 3, cap: 6 }, agility: { floor: 2, cap: 7 }, dexterity: { floor: 2, cap: 6 }, strength: { floor: 1, cap: 6 }, logic: { floor: 1, cap: 6 }, intuition: { floor: 2, cap: 6 }, willpower: { floor: 3, cap: 7 }, charisma: { floor: 1, cap: 4 }, luck: { floor: 1, cap: 6 } },
   troll: { body: { floor: 3, cap: 9 }, agility: { floor: 1, cap: 5 }, dexterity: { floor: 2, cap: 5 }, strength: { floor: 4, cap: 9 }, logic: { floor: 1, cap: 4 }, intuition: { floor: 1, cap: 4 }, willpower: { floor: 2, cap: 6 }, charisma: { floor: 1, cap: 5 }, luck: { floor: 1, cap: 5 } },
   minotaur: { body: { floor: 4, cap: 10 }, agility: { floor: 1, cap: 4 }, dexterity: { floor: 1, cap: 4 }, strength: { floor: 5, cap: 11 }, logic: { floor: 1, cap: 4 }, intuition: { floor: 1, cap: 4 }, willpower: { floor: 3, cap: 6 }, charisma: { floor: 1, cap: 3 }, luck: { floor: 1, cap: 5 } },
+};
+
+const STAT_ICONS: Record<StatName, React.ReactNode> = {
+  body: <Heart size={14} />,
+  agility: <Target size={14} />,
+  dexterity: <Zap size={14} />,
+  strength: <Shield size={14} />,
+  logic: <Brain size={14} />,
+  intuition: <Star size={14} />,
+  willpower: <Shield size={14} />,
+  charisma: <UserPlus size={14} />,
+  luck: <Star size={14} />,
 };
 
 const calculateStatKarmaCost = (floor: number, current: number) => {
@@ -87,7 +130,7 @@ export const CharacterView: React.FC<CharacterViewProps> = ({ token, isAdmin, on
   // Creation State
   const [step, setStep] = useState(1);
   const [karma, setKarma] = useState(50);
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<CreationForm>({
     name: '',
     faction: 'shadow',
     race: 'human',
@@ -99,25 +142,23 @@ export const CharacterView: React.FC<CharacterViewProps> = ({ token, isAdmin, on
     luck: 1
   });
 
-  // Reset stats to floor when race changes
-  useEffect(() => {
-    const data = UI_RACE_DATA[formData.race];
-    if (data) {
-      setFormData(prev => ({
-        ...prev,
-        body: data.body.floor,
-        agility: data.agility.floor,
-        dexterity: data.dexterity.floor,
-        strength: data.strength.floor,
-        logic: data.logic.floor,
-        intuition: data.intuition.floor,
-        willpower: data.willpower.floor,
-        charisma: data.charisma.floor,
-        luck: data.luck.floor
-      }));
-      setKarma(50);
-    }
-  }, [formData.race]);
+  const handleRaceChange = (race: RaceName) => {
+    const data = UI_RACE_DATA[race];
+    setFormData((current) => ({
+      ...current,
+      race,
+      body: data.body.floor,
+      agility: data.agility.floor,
+      dexterity: data.dexterity.floor,
+      strength: data.strength.floor,
+      logic: data.logic.floor,
+      intuition: data.intuition.floor,
+      willpower: data.willpower.floor,
+      charisma: data.charisma.floor,
+      luck: data.luck.floor,
+    }));
+    setKarma(50);
+  };
 
   // Derived stats for summary
   const derived = {
@@ -129,8 +170,8 @@ export const CharacterView: React.FC<CharacterViewProps> = ({ token, isAdmin, on
     slots: 5 + formData.strength + Math.floor(formData.body / 2)
   };
 
-  const handleStatChange = (stat: string, delta: number) => {
-    const currentVal = (formData as any)[stat];
+  const handleStatChange = (stat: StatName, delta: number) => {
+    const currentVal = formData[stat];
     const targetVal = currentVal + delta;
     const race = UI_RACE_DATA[formData.race];
     
@@ -148,23 +189,26 @@ export const CharacterView: React.FC<CharacterViewProps> = ({ token, isAdmin, on
   };
 
   useEffect(() => {
-    fetchCharacters();
-  }, []);
-
-  const fetchCharacters = async () => {
-    try {
-      const response = await fetch(apiUrl('/characters'), {
+    const controller = new AbortController();
+    fetch(apiUrl('/characters'), {
         headers: { Authorization: `Bearer ${token}` },
+        signal: controller.signal,
+      })
+      .then(async (response) => {
+        if (!response.ok) throw new Error('Failed to load characters');
+        return response.json() as Promise<Character[]>;
+      })
+      .then(setCharacters)
+      .catch((err: unknown) => {
+        if (err instanceof DOMException && err.name === 'AbortError') return;
+        setError(err instanceof Error ? err.message : 'Failed to load characters');
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setLoading(false);
       });
-      if (!response.ok) throw new Error('Failed to load characters');
-      const data = await response.json();
-      setCharacters(data);
-    } catch (err: any) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
-  };
+
+    return () => controller.abort();
+  }, [token]);
 
   const handleCreate = async () => {
     try {
@@ -176,7 +220,7 @@ export const CharacterView: React.FC<CharacterViewProps> = ({ token, isAdmin, on
       }
 
       const selectedClass = getSelectedClass(formData.className);
-      const payload: any = {
+      const payload: CreateCharacterPayload = {
         name: formData.name.trim(),
         faction: formData.faction,
         race: formData.race,
@@ -208,23 +252,14 @@ export const CharacterView: React.FC<CharacterViewProps> = ({ token, isAdmin, on
         },
         body: JSON.stringify(payload),
       });
-      const data = await response.json();
+      const data = await response.json() as Character & { error?: string };
       if (!response.ok) throw new Error(data.error || 'Creation failed');
       
       onSelect(data);
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Creation failed');
     }
   };
-
-  const CornerAccents = () => (
-    <>
-      <div className="corner-accent corner-tl" />
-      <div className="corner-accent corner-tr" />
-      <div className="corner-accent corner-bl" />
-      <div className="corner-accent corner-br" />
-    </>
-  );
 
   if (view === 'create') {
     return (
@@ -260,10 +295,10 @@ export const CharacterView: React.FC<CharacterViewProps> = ({ token, isAdmin, on
                   <div className="space-y-4">
                     <label className="text-xs uppercase tracking-widest opacity-60 text-glow">Faction Alignment</label>
                     <div className="flex gap-4">
-                      {['shadow', 'corp'].map(f => (
+                      {FACTIONS.map(f => (
                         <button 
                           key={f}
-                          onClick={() => setFormData({...formData, faction: f as any})}
+                          onClick={() => setFormData({...formData, faction: f})}
                           className={`flex-1 py-4 border text-xs font-bold tracking-widest transition-all ${
                             formData.faction === f 
                               ? (f === 'shadow' ? 'bg-pink-500/20 border-pink-500 text-pink-500' : 'bg-blue-500/20 border-blue-500 text-blue-500')
@@ -287,7 +322,7 @@ export const CharacterView: React.FC<CharacterViewProps> = ({ token, isAdmin, on
                     <select 
                       className="w-full bg-[#050505] border border-[#00ff41]/30 p-3 text-sm focus:outline-none"
                       value={formData.race}
-                      onChange={(e) => setFormData({...formData, race: e.target.value})}
+                      onChange={(e) => handleRaceChange(e.target.value as RaceName)}
                     >
                       {RACES.map(r => <option key={r.slug} value={r.slug}>{r.name}</option>)}
                     </select>
@@ -302,7 +337,7 @@ export const CharacterView: React.FC<CharacterViewProps> = ({ token, isAdmin, on
                     {CLASSES.map(c => (
                       <button 
                         key={c.slug}
-                        onClick={() => setFormData({...formData, className: c.slug as any})}
+                        onClick={() => setFormData({...formData, className: c.slug})}
                         className={`p-3 border text-[9px] font-bold tracking-widest transition-all text-center ${
                           formData.className === c.slug 
                             ? 'bg-[#00ff41]/20 border-[#00ff41] text-[#00ff41]'
@@ -324,7 +359,7 @@ export const CharacterView: React.FC<CharacterViewProps> = ({ token, isAdmin, on
                       <select 
                         className="w-full bg-[#050505] border border-[#00ff41]/30 p-3 text-sm focus:outline-none"
                         value={formData.streetDocPath}
-                        onChange={(e) => setFormData({...formData, streetDocPath: e.target.value})}
+                        onChange={(e) => setFormData({...formData, streetDocPath: e.target.value as CreationForm['streetDocPath']})}
                       >
                         <option value="tech">TECH-BASED (Mundane)</option>
                         <option value="magic">MAGIC-BASED (Awakened)</option>
@@ -338,9 +373,9 @@ export const CharacterView: React.FC<CharacterViewProps> = ({ token, isAdmin, on
                       <select 
                         className="w-full bg-[#050505] border border-[#00ff41]/30 p-3 text-sm focus:outline-none"
                         value={formData.mentorSpirit}
-                        onChange={(e) => setFormData({...formData, mentorSpirit: e.target.value})}
+                        onChange={(e) => setFormData({...formData, mentorSpirit: e.target.value as MentorSpirit})}
                       >
-                        {['bear', 'gator', 'cat', 'eagle', 'wolf', 'rat', 'valkyrie', 'chaos'].map(s => (
+                        {MENTOR_SPIRITS.map(s => (
                           <option key={s} value={s}>{s.toUpperCase()}</option>
                         ))}
                       </select>
@@ -378,17 +413,13 @@ export const CharacterView: React.FC<CharacterViewProps> = ({ token, isAdmin, on
                 </div>
 
                 <div className="grid grid-cols-3 gap-4">
-                  {Object.entries({
-                    body: <Heart size={14}/>, agility: <Target size={14}/>, dexterity: <Zap size={14}/>,
-                    strength: <Shield size={14}/>, logic: <Brain size={14}/>, intuition: <Star size={14}/>,
-                    willpower: <Shield size={14}/>, charisma: <UserPlus size={14}/>, luck: <Star size={14}/>
-                  }).map(([stat, icon]) => {
+                  {STAT_NAMES.map((stat) => {
                     const race = UI_RACE_DATA[formData.race];
-                    const val = (formData as any)[stat];
+                    const val = formData[stat];
                     return (
                       <div key={stat} className="neon-panel p-4 bg-[#050505]">
                         <div className="flex justify-between items-center mb-3">
-                          <span className="text-[10px] uppercase tracking-widest opacity-60 flex items-center gap-2">{icon} {stat}</span>
+                          <span className="text-[10px] uppercase tracking-widest opacity-60 flex items-center gap-2">{STAT_ICONS[stat]} {stat}</span>
                           <span className="text-lg font-bold">{val}</span>
                         </div>
                         <div className="flex gap-2">

@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
 import { Shield, Lock, User, Mail } from 'lucide-react';
+import { CornerAccents } from '../components/CornerAccents';
+import { ApiRequestError } from '../lib/api';
 
 interface AuthViewProps {
   onLogin: (u: string, p: string) => Promise<void>;
@@ -31,28 +33,21 @@ export const AuthView: React.FC<AuthViewProps> = ({ onLogin, onRegister }) => {
       } else {
         await onRegister(username, email, password);
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       // If we have a complex error object from a failed fetch
-      if (err.details?.fieldErrors) {
+      if (err instanceof ApiRequestError && err.details?.fieldErrors) {
         const firstField = Object.keys(err.details.fieldErrors)[0];
-        const firstMsg = err.details.fieldErrors[firstField][0];
-        setError(`${firstField.toUpperCase()}: ${firstMsg.toUpperCase()}`);
+        const firstMsg = firstField ? err.details.fieldErrors[firstField]?.[0] : undefined;
+        setError(firstField && firstMsg
+          ? `${firstField.toUpperCase()}: ${firstMsg.toUpperCase()}`
+          : err.message.toUpperCase());
       } else {
-        setError(err.message.toUpperCase());
+        setError(err instanceof Error ? err.message.toUpperCase() : 'AUTHENTICATION FAILED');
       }
     } finally {
       setLoading(false);
     }
   };
-
-  const CornerAccents = () => (
-    <>
-      <div className="corner-accent corner-tl" />
-      <div className="corner-accent corner-tr" />
-      <div className="corner-accent corner-bl" />
-      <div className="corner-accent corner-br" />
-    </>
-  );
 
   return (
     <div className="flex h-screen w-screen items-center justify-center bg-[#020402] text-[#00ff41] font-mono crt p-4">

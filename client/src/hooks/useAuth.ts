@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { apiUrl } from '../lib/api';
+import { useState } from 'react';
+import { ApiRequestError, apiUrl } from '../lib/api';
 
 interface User {
   id: string;
@@ -7,18 +7,31 @@ interface User {
   isAdmin: boolean;
 }
 
+interface AuthResponse {
+  token: string;
+  accountId: string;
+  username: string;
+  isAdmin?: boolean;
+  error?: string;
+  details?: { fieldErrors?: Record<string, string[]> };
+}
+
+function readStoredUser(): User | null {
+  const storedUser = localStorage.getItem('nr_user');
+  if (!storedUser) return null;
+
+  try {
+    const parsed = JSON.parse(storedUser) as Partial<User>;
+    if (typeof parsed.id !== 'string' || typeof parsed.username !== 'string') return null;
+    return { id: parsed.id, username: parsed.username, isAdmin: parsed.isAdmin === true };
+  } catch {
+    return null;
+  }
+}
+
 export const useAuth = () => {
   const [token, setToken] = useState<string | null>(localStorage.getItem('nr_token'));
-  const [user, setUser] = useState<User | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-
-  useEffect(() => {
-    const storedUser = localStorage.getItem('nr_user');
-    if (storedUser) {
-      setUser(JSON.parse(storedUser));
-    }
-    setIsLoading(false);
-  }, []);
+  const [user, setUser] = useState<User | null>(readStoredUser);
 
   const login = async (username: string, password: string) => {
     const response = await fetch(apiUrl('/auth/login'), {
@@ -27,11 +40,9 @@ export const useAuth = () => {
       body: JSON.stringify({ username, password }),
     });
 
-    const data = await response.json();
+    const data = await response.json() as AuthResponse;
     if (!response.ok) {
-      const error: any = new Error(data.error || 'Login failed');
-      error.details = data.details;
-      throw error;
+      throw new ApiRequestError(data.error || 'Login failed', data.details);
     }
 
     const userData = { id: data.accountId, username: data.username, isAdmin: data.isAdmin === true };
@@ -48,11 +59,9 @@ export const useAuth = () => {
       body: JSON.stringify({ username, email, password }),
     });
 
-    const data = await response.json();
+    const data = await response.json() as AuthResponse;
     if (!response.ok) {
-      const error: any = new Error(data.error || 'Registration failed');
-      error.details = data.details;
-      throw error;
+      throw new ApiRequestError(data.error || 'Registration failed', data.details);
     }
 
     const userData = { id: data.accountId, username: data.username, isAdmin: data.isAdmin === true };
@@ -69,5 +78,5 @@ export const useAuth = () => {
     localStorage.removeItem('nr_user');
   };
 
-  return { token, user, login, register, logout, isLoading };
+  return { token, user, login, register, logout, isLoading: false };
 };

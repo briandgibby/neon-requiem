@@ -113,6 +113,29 @@ export class MatrixService {
     };
   }
 
+  private getPersistedNodeView(
+    node: NonNullable<Awaited<ReturnType<MatrixRepository['findNodeById']>>>
+  ): MatrixNodeView {
+    return {
+      id: node.id,
+      nodeId: node.id,
+      name: node.name,
+      slug: node.slug,
+      securityLevel: node.securityLevel,
+      alertLevel: node.alertLevel as AlertLevel,
+      linkedRoomId: node.roomId,
+      activeIC: node.activeIC.map((ice) => ({
+        id: ice.id,
+        entityId: ice.id,
+        name: ice.name,
+        slug: ice.slug,
+        type: ice.type as IceComponent['type'],
+        currentHp: ice.currentHp,
+        maxHp: ice.hp,
+      })),
+    };
+  }
+
   private spawnIceForNode(nodeEntityId: string, activeIC: any[] = []): void {
     const existingIceIds = this.ecsRegistry.getEntitiesWith([ComponentTypes.Ice, ComponentTypes.Position]);
     const existingIceByDbId = new Set(
@@ -368,7 +391,8 @@ export class MatrixService {
     // Fallback to DB
     const character = await this.matrixRepo.getCharacterWithEquipment(characterId, accountId);
     if (!character?.activeNodeId) return null;
-    return this.matrixRepo.findNodeById(character.activeNodeId);
+    const node = await this.matrixRepo.findNodeById(character.activeNodeId);
+    return node ? this.getPersistedNodeView(node) : null;
   }
 
   async performHacking(characterId: string, accountId: string, type: 'brute' | 'sleaze'): Promise<any> {

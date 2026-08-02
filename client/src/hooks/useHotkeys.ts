@@ -1,18 +1,13 @@
-import { useEffect, useRef, useState } from 'react';
+import { useState } from 'react';
 import { apiUrl } from '../lib/api';
 import { createHotkeyMutationQueue } from '../lib/hotkeys';
-import type { HotkeyMap, HotkeyMutationQueue } from '../lib/hotkeys';
+import type { HotkeyMap } from '../lib/hotkeys';
 
 interface UseHotkeysOptions {
   token: string;
   characterId: string;
   initialHotkeys: HotkeyMap;
   onError: (message: string) => void;
-}
-
-interface QueueRef {
-  key: string;
-  queue: HotkeyMutationQueue;
 }
 
 export function useHotkeys({
@@ -23,10 +18,7 @@ export function useHotkeys({
 }: UseHotkeysOptions) {
   const [hotkeys, setHotkeys] = useState<HotkeyMap>(initialHotkeys);
   const [pendingWrites, setPendingWrites] = useState(0);
-  const queueRef = useRef<QueueRef | undefined>(undefined);
-  const queueKey = `${token}:${characterId}`;
-
-  if (!queueRef.current || queueRef.current.key !== queueKey) {
+  const [queue] = useState(() => {
     const persist = async (nextHotkeys: HotkeyMap): Promise<HotkeyMap> => {
       const response = await fetch(apiUrl(`/characters/${characterId}/hotkeys`), {
         method: 'PATCH',
@@ -43,17 +35,8 @@ export function useHotkeys({
       return data.hotkeys;
     };
 
-    queueRef.current = {
-      key: queueKey,
-      queue: createHotkeyMutationQueue(initialHotkeys, persist),
-    };
-  }
-
-  const queue = queueRef.current.queue;
-
-  useEffect(() => {
-    setHotkeys(queue.snapshot());
-  }, [queue]);
+    return createHotkeyMutationQueue(initialHotkeys, persist);
+  });
 
   const runMutation = async (operation: Promise<HotkeyMap>): Promise<boolean> => {
     setPendingWrites((count) => count + 1);
