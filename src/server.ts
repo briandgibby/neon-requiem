@@ -28,6 +28,7 @@ import { SecurityPatrol } from './engine/security-patrol';
 import { RoomPresence } from './engine/room-presence';
 import { PlayerSyncCoordinator } from './engine/player-sync-coordinator';
 import { SocketHub } from './engine/socket-hub';
+import { RoomEventPublisher } from './engine/room-event-publisher';
 import { CommandDispatcher } from './engine/command-dispatcher';
 import { CommandRegistry } from './engine/command-registry';
 import { registerCommandRoutes } from './engine/command.routes';
@@ -184,21 +185,24 @@ async function bootstrap() {
   const shopService = new ShopService(shopRepo, worldRepo, charRepo);
   registerShopRoutes(app, shopService, authService);
 
+  const socketHub = new SocketHub(app.server, authService, roomPresence, syncCoordinator);
+  const roomEvents: RoomEventPublisher = {
+    publish: (roomId, event) => socketHub.emitToRoom(roomId, 'message', event),
+  };
+
   // Register Heartbeat subscribers
   heartbeat.subscribe(combatService);
   heartbeat.subscribe(new SecurityPatrol(db, combatService, app.log));
   heartbeat.subscribe(new RegenSystem(ecsRegistry));
   heartbeat.subscribe(new CombatTickSystem(ecsRegistry));
   heartbeat.subscribe(new CombatReinforcementSystem(ecsRegistry, combatService, worldService));
-  heartbeat.subscribe(new AlertPatrolSystem(ecsRegistry, worldService, app.log, instanceRepo));
-  heartbeat.subscribe(new MobAiSystem(ecsRegistry, moveDispatcher, worldService));
+  heartbeat.subscribe(new AlertPatrolSystem(ecsRegistry, worldService, app.log, instanceRepo, roomEvents));
+  heartbeat.subscribe(new MobAiSystem(ecsRegistry, moveDispatcher, worldService, roomEvents));
   heartbeat.subscribe(new MatrixTickSystem(ecsRegistry, matrixRepo, instanceRepo));
   heartbeat.subscribe(new IceAiSystem(ecsRegistry));
   heartbeat.subscribe(new MissionSystem(ecsRegistry, (missionId, index) => missionService.updateObjectiveProgress(missionId, index)));
   heartbeat.subscribe(new EntityCleanupSystem(ecsRegistry));
   heartbeat.subscribe(new InstanceCleanupSystem(ecsRegistry, instanceRepo));
-
-  const socketHub = new SocketHub(app.server, authService, roomPresence, syncCoordinator);
 
   const commandRegistry = new CommandRegistry();
   commandRegistry.register(new MoveHandler(worldService, socketHub, instanceRepo, ecsRegistry));

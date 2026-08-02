@@ -5,10 +5,12 @@ import {
   CombatSessionComponent,
   ComponentTypes,
   HealthComponent,
+  IdentityComponent,
   PositionComponent,
 } from '../components';
 import { RoomLookup, SafeZonePolicy } from '../../../domains/world/world.types';
 import { InstanceAlertAuthority } from '../../../domains/mission/instance.repository';
+import { RoomEventPublisher } from '../../room-event-publisher';
 
 interface AlertPatrolWorldPolicy extends SafeZonePolicy, RoomLookup {}
 type AlertPatrolRoom = Awaited<ReturnType<RoomLookup['getRoom']>>;
@@ -32,6 +34,7 @@ export class AlertPatrolSystem implements Tickable {
     private readonly worldPolicy: AlertPatrolWorldPolicy,
     private readonly diagnostics?: AlertPatrolDiagnostics,
     private readonly instanceAlerts?: InstanceAlertSource,
+    private readonly roomEvents?: RoomEventPublisher,
   ) {}
 
   async onTick(_tickCount: number): Promise<void> {
@@ -158,10 +161,20 @@ export class AlertPatrolSystem implements Tickable {
 
       if (!nextRoomId) continue;
 
+      const previousRoomId = position.roomId;
       position.roomId = nextRoomId;
       if (nextRoomId === alertSession.roomId) {
         ai.state = 'hostile';
       }
+      const patrolName = this.registry.getComponent<IdentityComponent>(patrolId, ComponentTypes.Identity)?.name
+        ?? 'A security patrol';
+      this.publishRoomEvent(previousRoomId, {
+        text: `${patrolName} departs to investigate an alarm.`,
+        type: 'info',
+      });
+      this.publishRoomEvent(nextRoomId, ai.state === 'hostile'
+        ? { text: `${patrolName} arrives and engages the room.`, type: 'combat' }
+        : { text: `${patrolName} arrives while sweeping for the alarm source.`, type: 'info' });
       return;
     }
   }
@@ -265,5 +278,13 @@ export class AlertPatrolSystem implements Tickable {
       { err, ...context },
       'Alert patrol skipped movement due to room or safe-zone lookup failure',
     );
+  }
+
+  private publishRoomEvent(roomId: string, event: { text: string; type: 'info' | 'combat' }): void {
+    try {
+      this.roomEvents?.publish(roomId, event);
+    } catch (err) {
+      this.diagnostics?.warn({ err, roomId }, 'Alert patrol could not publish room activity');
+    }
   }
 }

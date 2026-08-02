@@ -11,6 +11,7 @@ import {
   ComponentTypes,
   DeckerComponent,
   HealthComponent,
+  IdentityComponent,
   NpcIdComponent,
   PlayerIdComponent,
   PositionComponent,
@@ -70,6 +71,10 @@ function createLinearWorldPolicy(roomCount: number) {
 
 function addPhysicalPlayer(registry: EcsRegistry, roomId: string): string {
   const entityId = registry.createEntity();
+  registry.addComponent<IdentityComponent>(entityId, ComponentTypes.Identity, {
+    name: 'Runner',
+    slug: 'runner',
+  });
   registry.addComponent<PlayerIdComponent>(entityId, ComponentTypes.PlayerId, {
     characterId: entityId,
     accountId: 'account-1',
@@ -120,6 +125,10 @@ function addBodyGuard(registry: EcsRegistry, roomId: string, guardedEntityId: st
 
 function addHostileMob(registry: EcsRegistry, roomId: string): string {
   const entityId = registry.createEntity();
+  registry.addComponent<IdentityComponent>(entityId, ComponentTypes.Identity, {
+    name: 'Hostile Guard',
+    slug: 'hostile-guard',
+  });
   registry.addComponent<NpcIdComponent>(entityId, ComponentTypes.NpcId, { mobId: entityId });
   registry.addComponent<PositionComponent>(entityId, ComponentTypes.Position, { roomId });
   registry.addComponent<HealthComponent>(entityId, ComponentTypes.Health, {
@@ -180,6 +189,35 @@ describe('MobAiSystem', () => {
     const ai = registry.getComponent<AiComponent>(mobId, ComponentTypes.Ai);
     expect(playerHealth?.current).toBeLessThan(100);
     expect(ai?.targetEntityId).toBe(playerId);
+  });
+
+  it('publishes autonomous attacks to the physical room combat log', async () => {
+    jest.spyOn(Math, 'random').mockReturnValue(0.99);
+    const registry = new EcsRegistry();
+    const roomEvents = { publish: jest.fn() };
+    const system = new MobAiSystem(registry, createDispatcher(), createWorldPolicy(), roomEvents);
+    addPhysicalPlayer(registry, 'room-1');
+    addHostileMob(registry, 'room-1');
+
+    await system.onTick(1);
+
+    expect(roomEvents.publish).toHaveBeenCalledWith('room-1', {
+      text: expect.stringMatching(/^Hostile Guard attacks Runner for \d+ damage\.$/),
+      type: 'combat',
+    });
+  });
+
+  it('does not interrupt an autonomous attack when room output fails', async () => {
+    jest.spyOn(Math, 'random').mockReturnValue(0.99);
+    const registry = new EcsRegistry();
+    const roomEvents = { publish: jest.fn(() => { throw new Error('socket unavailable'); }) };
+    const system = new MobAiSystem(registry, createDispatcher(), createWorldPolicy(), roomEvents);
+    const playerId = addPhysicalPlayer(registry, 'room-1');
+    addHostileMob(registry, 'room-1');
+
+    await system.onTick(1);
+
+    expect(registry.getComponent<HealthComponent>(playerId, ComponentTypes.Health)?.current).toBeLessThan(100);
   });
 
   it('does not attack in an effective safe zone', async () => {
@@ -247,6 +285,30 @@ describe('MobAiSystem', () => {
     expect(guardHealth?.current).toBeLessThan(100);
   });
 
+  it('publishes body-guard interception to the room combat log', async () => {
+    jest.spyOn(Math, 'random').mockReturnValue(0.99);
+    const registry = new EcsRegistry();
+    const roomEvents = { publish: jest.fn() };
+    const system = new MobAiSystem(registry, createDispatcher(), createWorldPolicy(), roomEvents);
+    const deckerId = addPhysicalPlayer(registry, 'matrix-node-1');
+    registry.addComponent<DeckerComponent>(deckerId, ComponentTypes.Decker, {
+      activeNodeEntityId: 'matrix-node-1', physicalRoomId: 'room-1', attack: 5, sleaze: 5,
+      firewall: 5, biofeedbackBuffer: 5, overwatchScore: 0,
+    });
+    const guardId = addBodyGuard(registry, 'room-1', deckerId);
+    registry.addComponent<IdentityComponent>(guardId, ComponentTypes.Identity, {
+      name: 'Body Guard', slug: 'body-guard',
+    });
+    addHostileMob(registry, 'room-1');
+
+    await system.onTick(1);
+
+    expect(roomEvents.publish).toHaveBeenCalledWith('room-1', {
+      text: expect.stringMatching(/^Hostile Guard attacks Runner, but Body Guard intercepts the blow for \d+ damage\.$/),
+      type: 'combat',
+    });
+  });
+
   it('does not interrupt mob AP recovery when it cannot attack yet', async () => {
     const registry = new EcsRegistry();
     const worldPolicy = createWorldPolicy();
@@ -311,6 +373,40 @@ describe('MobAiSystem', () => {
     expect(mobPosition?.roomId).toBe('room-2');
     expect(playerHealth?.current).toBe(100);
     expect(ai?.targetEntityId).toBe(playerId);
+  });
+
+  it('publishes pursuit departure and arrival to the affected rooms', async () => {
+    const registry = new EcsRegistry();
+    const roomEvents = { publish: jest.fn() };
+    const system = new MobAiSystem(registry, createDispatcher(), createWorldPolicy(), roomEvents);
+    const playerId = addPhysicalPlayer(registry, 'room-2');
+    const mobId = addHostileMob(registry, 'room-1');
+    const ai = registry.getComponent<AiComponent>(mobId, ComponentTypes.Ai);
+    if (ai) ai.targetEntityId = playerId;
+
+    await system.onTick(1);
+
+    expect(roomEvents.publish).toHaveBeenNthCalledWith(1, 'room-1', {
+      text: 'Hostile Guard races after Runner.', type: 'info',
+    });
+    expect(roomEvents.publish).toHaveBeenNthCalledWith(2, 'room-2', {
+      text: 'Hostile Guard arrives in pursuit of Runner.', type: 'info',
+    });
+  });
+
+  it('does not interrupt pursuit when room output fails', async () => {
+    const registry = new EcsRegistry();
+    const roomEvents = { publish: jest.fn(() => { throw new Error('socket unavailable'); }) };
+    const system = new MobAiSystem(registry, createDispatcher(), createWorldPolicy(), roomEvents);
+    const playerId = addPhysicalPlayer(registry, 'room-2');
+    const mobId = addHostileMob(registry, 'room-1');
+    const ai = registry.getComponent<AiComponent>(mobId, ComponentTypes.Ai);
+    if (ai) ai.targetEntityId = playerId;
+
+    await system.onTick(1);
+
+    expect(registry.getComponent<PositionComponent>(mobId, ComponentTypes.Position)?.roomId).toBe('room-2');
+    expect(roomEvents.publish).toHaveBeenCalledTimes(2);
   });
 
   it('moves one room along a path toward an existing target multiple rooms away', async () => {

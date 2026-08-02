@@ -42,7 +42,6 @@ Implemented:
 
 Deferred:
 
-- Patrol broadcast/combat log output.
 - Weighted or randomized patrol-route selection.
 - Persisted patrol definitions in world content.
 
@@ -52,6 +51,7 @@ Follow-on completed (2026-08-02):
 - Escalated the shared alert from both physical alarms and matrix actions.
 - Reconciled active MissionInstance alert authority back into all linked persisted matrix nodes without mission auto-decay, including nodes not yet materialized in ECS.
 - Fed scoped persisted sources into `AlertPatrolSystem` alongside ECS combat sessions, with fill-only retry semantics and inactive-instance suppression.
+- Published patrol departures and arrivals to the affected physical rooms through the shared room-event port.
 
 ---
 

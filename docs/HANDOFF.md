@@ -312,9 +312,7 @@ The project has moved from a shallow procedural model to a **Deep Module** archi
      - Pursuit searches up to eight room transitions per AI tick and treats farther targets as lost scent to keep heartbeat work bounded.
      - Pursuit does not path through intermediate effective safe-zone rooms.
      - Pursuit rejects id-valued exits that do not resolve to matching room slugs, mirroring production movement semantics.
-   - Deferred follow-ons:
-     - Alert-expanded patrol routes for YELLOW/RED alert.
-     - Combat log/broadcast output for autonomous NPC attacks.
+   - Follow-on completed 2026-08-02: room-local combat output now covers autonomous attacks and pursuit movement.
 
 17. **Phase 4.4C — RED-Alert Elite Spawns (COMPLETE, 2026-07-12):**
    - Plan: `docs/superpowers/plans/2026-07-12-phase-4.4c-red-alert-elite-spawns.md`
@@ -342,7 +340,7 @@ The project has moved from a shallow procedural model to a **Deep Module** archi
    - Deferred follow-ons:
      - Guard duration/expiration rules.
      - Multiple-guard priority ordering.
-     - Combat log/broadcast output for interception.
+   - Follow-on completed 2026-08-02: room-local combat output identifies body-guard interceptions.
 
 19. **Command Picker Hotkey Slice (COMPLETE, 2026-07-12):**
    - Plan: `docs/superpowers/plans/2026-07-12-command-picker-hotkeys.md`
@@ -368,8 +366,6 @@ The project has moved from a shallow procedural model to a **Deep Module** archi
      - Patrols become `hostile` after reaching an alerted room so `MobAiSystem` can handle attacks.
      - Room and safe-zone lookup failures are reported through diagnostics while the affected patrol is isolated from the rest of the heartbeat.
    - Deferred follow-ons:
-     - MissionInstance-wide alert source integration beyond ECS `CombatSessionComponent`.
-     - Patrol broadcast/combat log output.
      - Persisted patrol definitions in world content.
 
 21. **Redmond Barrens World Content (COMPLETE, 2026-08-02):**
@@ -417,6 +413,11 @@ The project has moved from a shallow procedural model to a **Deep Module** archi
    - Source updates validate that the room belongs to the active instance; resolved/inactive instances do not continue driving matrix alerts or patrol movement, even while an ECS combat session lingers before cleanup.
    - The migration is applied locally; no active YELLOW/RED instances required source backfill. Focused tests, all 240 backend tests, and both production builds pass.
 
+26. **Autonomous Room Event Output (COMPLETE, 2026-08-02):**
+   - Added a small `RoomEventPublisher` port and adapted it to the existing Socket.IO `message` event in server composition.
+   - Hostile NPC attacks, body-guard interceptions, pursuit departures/arrivals, and alert-patrol departures/arrivals now publish only to affected physical rooms.
+   - Combat actions use the existing terminal `combat` style; movement uses `info`. Publisher failures are isolated from ECS state changes and covered by focused regression tests.
+
 ---
 
 ## 4. Immediate Next Steps (Phase 4.4+)
@@ -424,7 +425,6 @@ The project has moved from a shallow procedural model to a **Deep Module** archi
 **Phase 4.4A through 4.4E and the Redmond Barrens content slice are complete locally.**
 
 1. Remaining Phase 4.4 follow-ons:
-   - Patrol broadcast/combat log output
    - Persisted patrol definitions in world content
 
 **Remaining carry-forward items:**

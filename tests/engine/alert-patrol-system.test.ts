@@ -5,6 +5,7 @@ import {
   CombatSessionComponent,
   ComponentTypes,
   HealthComponent,
+  IdentityComponent,
   NpcIdComponent,
   PositionComponent,
 } from '../../src/engine/ecs/components';
@@ -79,6 +80,10 @@ function withInstanceScopes<T extends ReturnType<typeof createWorldPolicy>>(
 
 function addPatrol(registry: EcsRegistry, roomId: string, patrolRoute?: string[]): string {
   const entityId = registry.createEntity();
+  registry.addComponent<IdentityComponent>(entityId, ComponentTypes.Identity, {
+    name: 'Security Patrol',
+    slug: 'security-patrol',
+  });
   registry.addComponent<NpcIdComponent>(entityId, ComponentTypes.NpcId, { mobId: entityId });
   registry.addComponent<PositionComponent>(entityId, ComponentTypes.Position, { roomId });
   registry.addComponent<HealthComponent>(entityId, ComponentTypes.Health, {
@@ -435,5 +440,46 @@ describe('AlertPatrolSystem', () => {
     const ai = registry.getComponent<AiComponent>(patrolId, ComponentTypes.Ai);
     expect(position?.roomId).toBe('room-3');
     expect(ai?.state).toBe('hostile');
+  });
+
+  it('publishes patrol departure and arrival to the affected rooms', async () => {
+    const registry = new EcsRegistry();
+    const worldPolicy = createWorldPolicy();
+    const roomEvents = { publish: jest.fn() };
+    const system = new AlertPatrolSystem(registry, worldPolicy, undefined, undefined, roomEvents);
+    addPatrol(registry, 'room-2', ['room-2', 'room-3']);
+    addCombatSession(registry, 'room-3', 'YELLOW');
+
+    await system.onTick(1);
+
+    expect(roomEvents.publish).toHaveBeenNthCalledWith(1, 'room-2', {
+      text: 'Security Patrol departs to investigate an alarm.', type: 'info',
+    });
+    expect(roomEvents.publish).toHaveBeenNthCalledWith(2, 'room-3', {
+      text: 'Security Patrol arrives and engages the room.', type: 'combat',
+    });
+  });
+
+  it('does not interrupt patrol movement when room output fails', async () => {
+    const registry = new EcsRegistry();
+    const diagnostics = { warn: jest.fn() };
+    const roomEvents = { publish: jest.fn(() => { throw new Error('socket unavailable'); }) };
+    const system = new AlertPatrolSystem(
+      registry,
+      createWorldPolicy(),
+      diagnostics,
+      undefined,
+      roomEvents,
+    );
+    const patrolId = addPatrol(registry, 'room-2', ['room-2', 'room-3']);
+    addCombatSession(registry, 'room-3', 'YELLOW');
+
+    await system.onTick(1);
+
+    expect(registry.getComponent<PositionComponent>(patrolId, ComponentTypes.Position)?.roomId).toBe('room-3');
+    expect(diagnostics.warn).toHaveBeenCalledWith(
+      expect.objectContaining({ roomId: 'room-2' }),
+      'Alert patrol could not publish room activity',
+    );
   });
 });

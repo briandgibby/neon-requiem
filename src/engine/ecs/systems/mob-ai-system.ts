@@ -9,12 +9,14 @@ import {
   ComponentTypes,
   DeckerComponent,
   HealthComponent,
+  IdentityComponent,
   NpcIdComponent,
   PlayerIdComponent,
   PositionComponent,
   SkillsComponent,
 } from '../components';
 import { RoomLookup, SafeZonePolicy } from '../../../domains/world/world.types';
+import { RoomEventPublisher } from '../../room-event-publisher';
 
 interface MobAiWorldPolicy extends SafeZonePolicy, RoomLookup {}
 type MobAiRoom = Awaited<ReturnType<RoomLookup['getRoom']>>;
@@ -30,6 +32,7 @@ export class MobAiSystem implements Tickable {
     private readonly registry: EcsRegistry,
     private readonly moveDispatcher: MoveDispatcher,
     private readonly worldPolicy: MobAiWorldPolicy,
+    private readonly roomEvents?: RoomEventPublisher,
   ) {}
 
   async onTick(_tickCount: number): Promise<void> {
@@ -64,7 +67,7 @@ export class MobAiSystem implements Tickable {
 
       const targetId = this.findTargetInRoom(position.roomId, ai.targetEntityId);
       if (!targetId) {
-        if (ai.targetEntityId && await this.tryPursueTarget(ai, position, ai.targetEntityId, safeZoneCache)) {
+        if (ai.targetEntityId && await this.tryPursueTarget(mobId, ai, position, ai.targetEntityId, safeZoneCache)) {
           continue;
         }
         ai.targetEntityId = undefined;
@@ -75,7 +78,14 @@ export class MobAiSystem implements Tickable {
       const attackTargetId = this.findGuardForTarget(targetId, position.roomId) ?? targetId;
 
       try {
-        await this.moveDispatcher.dispatch('attack', mobId, attackTargetId, { registry: this.registry });
+        const result = await this.moveDispatcher.dispatch('attack', mobId, attackTargetId, { registry: this.registry });
+        const damage = typeof result.data?.finalDamage === 'number' ? result.data.finalDamage : 0;
+        const mobName = this.getEntityName(mobId, 'A hostile');
+        const targetName = this.getEntityName(targetId, 'a runner');
+        const text = attackTargetId === targetId
+          ? `${mobName} attacks ${targetName} for ${damage} damage.`
+          : `${mobName} attacks ${targetName}, but ${this.getEntityName(attackTargetId, 'a body guard')} intercepts the blow for ${damage} damage.`;
+        this.publishRoomEvent(position.roomId, { text, type: 'combat' });
       } catch (_err) {
         this.startRecoveryIfSpent(status, mobId);
         // AI action failures should not stop the rest of the heartbeat.
@@ -97,6 +107,7 @@ export class MobAiSystem implements Tickable {
   }
 
   private async tryPursueTarget(
+    mobId: EntityId,
     ai: AiComponent,
     mobPosition: PositionComponent,
     targetId: EntityId,
@@ -120,7 +131,18 @@ export class MobAiSystem implements Tickable {
       const nextRoomId = await this.findNextPursuitRoomId(mobPosition.roomId, targetRoomId, safeZoneCache);
       if (!nextRoomId) return false;
 
+      const previousRoomId = mobPosition.roomId;
       mobPosition.roomId = nextRoomId;
+      const mobName = this.getEntityName(mobId, 'A hostile');
+      const targetName = this.getEntityName(targetId, 'a runner');
+      this.publishRoomEvent(previousRoomId, {
+        text: `${mobName} races after ${targetName}.`,
+        type: 'info',
+      });
+      this.publishRoomEvent(nextRoomId, {
+        text: `${mobName} arrives in pursuit of ${targetName}.`,
+        type: 'info',
+      });
       return true;
     } catch (_err) {
       ai.targetEntityId = undefined;
@@ -250,5 +272,17 @@ export class MobAiSystem implements Tickable {
 
     status.state = 'recovering';
     ap.recoveryTicks = Math.max(ap.recoveryTicks, 1);
+  }
+
+  private getEntityName(entityId: EntityId, fallback: string): string {
+    return this.registry.getComponent<IdentityComponent>(entityId, ComponentTypes.Identity)?.name ?? fallback;
+  }
+
+  private publishRoomEvent(roomId: string, event: { text: string; type: 'info' | 'combat' }): void {
+    try {
+      this.roomEvents?.publish(roomId, event);
+    } catch (_err) {
+      // Realtime output must not interrupt autonomous actions.
+    }
   }
 }
