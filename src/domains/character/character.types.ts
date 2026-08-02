@@ -1,5 +1,7 @@
 import { Faction, Race, ClassName, MentorSpirit, StreetDocPath } from '../../shared/types';
 
+export type HotkeyMap = Record<string, string>;
+
 export interface CreateCharacterInput {
   accountId: string;
   name: string;
@@ -80,6 +82,7 @@ export interface CharacterRecord {
   reputationCorp: number;
   reputationShadow: number;
   areaKnowledge: string[];
+  hotkeys: HotkeyMap;
 
   isJackedIn: boolean;
   activeNodeId: string | null;

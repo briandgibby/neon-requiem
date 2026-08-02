@@ -90,6 +90,7 @@ model Character {
   reputationShadow  Int     @default(0)
 
   areaKnowledge     String[] // Unlocked districts/maps
+  hotkeys           Json     @default("{}")
 
   isJackedIn   Boolean @default(false)
   activeNodeId String?

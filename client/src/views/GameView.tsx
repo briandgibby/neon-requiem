@@ -5,7 +5,10 @@ import { CommandPicker } from '../components/CommandPicker';
 import type { CommandMetadata } from '../components/CommandPicker';
 import { Shield, Activity, Map as MapIcon, Terminal as TerminalIcon } from 'lucide-react';
 import { useSocket } from '../hooks/useSocket';
+import { useHotkeys } from '../hooks/useHotkeys';
 import { apiUrl } from '../lib/api';
+import { resolveHotkey } from '../lib/hotkeys';
+import type { HotkeyMap } from '../lib/hotkeys';
 
 interface Character {
   id: string;
@@ -20,6 +23,7 @@ interface Character {
   armorValue: number;
   isJackedIn?: boolean;
   areaKnowledge?: string[];
+  hotkeys?: HotkeyMap;
 }
 
 interface RoomOccupant {
@@ -49,6 +53,17 @@ export const GameView: React.FC<GameViewProps> = ({ token, character, onLogout }
   const [roomOccupants, setRoomOccupants] = useState<RoomOccupant[]>([]);
   const [commands, setCommands] = useState<CommandMetadata[]>([]);
   const terminalRef = useRef<TerminalHandle>(null);
+  const {
+    hotkeys,
+    isSavingHotkey,
+    saveHotkey,
+    removeHotkey,
+  } = useHotkeys({
+    token,
+    characterId: character.id,
+    initialHotkeys: character.hotkeys ?? {},
+    onError: (message) => terminalRef.current?.writeln(`\x1b[31m${message}\x1b[0m`),
+  });
 
   useEffect(() => {
     let cancelled = false;
@@ -178,15 +193,19 @@ export const GameView: React.FC<GameViewProps> = ({ token, character, onLogout }
     };
   }, [socket, character.id]);
 
-  const handleCommand = (cmd: string) => {
-    if (cmd === 'logout') return onLogout();
-    if (cmd === 'clear') return terminalRef.current?.clear();
+  const dispatchCommand = (command: string) => {
+    if (command === 'logout') return onLogout();
+    if (command === 'clear') return terminalRef.current?.clear();
     
     if (socket && isConnected) {
-      socket.emit('command', { text: cmd });
+      socket.emit('command', { text: command });
     } else {
       terminalRef.current?.writeln('\x1b[31mConnection lost. Attempting to reconnect...\x1b[0m');
     }
+  };
+
+  const handleTerminalCommand = (input: string) => {
+    dispatchCommand(resolveHotkey(input, hotkeys));
   };
 
   const CornerAccents = () => (
@@ -268,7 +287,7 @@ export const GameView: React.FC<GameViewProps> = ({ token, character, onLogout }
                        localPois.map(poi => (
                          <button 
                            key={poi.slug}
-                           onClick={() => handleCommand(`navigate ${poi.slug}`)}
+                           onClick={() => dispatchCommand(`navigate ${poi.slug}`)}
                            className={`w-full text-left p-2 border transition-all text-[10px] group ${
                              poi.slug === roomData?.slug 
                              ? 'bg-blue-500/20 border-blue-500/50 text-blue-400 shadow-[0_0_10px_rgba(59,130,246,0.2)]' 
@@ -350,7 +369,7 @@ export const GameView: React.FC<GameViewProps> = ({ token, character, onLogout }
             {['N', 'S', 'E', 'W'].map(exit => (
               <button 
                 key={exit} 
-                onClick={() => handleCommand(exit.toLowerCase())}
+                onClick={() => dispatchCommand(exit.toLowerCase())}
                 disabled={!roomData?.exits?.[exit.toLowerCase()]}
                 className={`aspect-square flex items-center justify-center border text-xs transition-colors ${
                   roomData?.exits?.[exit.toLowerCase()] 
@@ -366,7 +385,7 @@ export const GameView: React.FC<GameViewProps> = ({ token, character, onLogout }
             {['U', 'D'].map(exit => (
               <button 
                 key={exit} 
-                onClick={() => handleCommand(exit === 'U' ? 'up' : 'down')}
+                onClick={() => dispatchCommand(exit === 'U' ? 'up' : 'down')}
                 disabled={!roomData?.exits?.[exit === 'U' ? 'up' : 'down']}
                 className={`py-1 border text-[8px] transition-colors ${
                   roomData?.exits?.[exit === 'U' ? 'up' : 'down']
@@ -384,8 +403,12 @@ export const GameView: React.FC<GameViewProps> = ({ token, character, onLogout }
           <CornerAccents />
           <CommandPicker
             commands={commands}
+            hotkeys={hotkeys}
             isMatrixMode={charData.isJackedIn}
-            onCommand={handleCommand}
+            onCommand={dispatchCommand}
+            onSaveHotkey={saveHotkey}
+            onRemoveHotkey={removeHotkey}
+            isSavingHotkey={isSavingHotkey}
           />
         </div>
       </div>
@@ -420,7 +443,7 @@ export const GameView: React.FC<GameViewProps> = ({ token, character, onLogout }
             <span className={`text-[8px] opacity-30 animate-pulse font-bold tracking-widest uppercase`}>{charData.isJackedIn ? 'Linking...' : 'Receiving Data...'}</span>
           </div>
           <div className="flex-1 relative">
-            <Terminal ref={terminalRef} onInput={handleCommand} isMatrixMode={charData.isJackedIn} />
+            <Terminal ref={terminalRef} onInput={handleTerminalCommand} isMatrixMode={charData.isJackedIn} />
           </div>
         </div>
       </div>

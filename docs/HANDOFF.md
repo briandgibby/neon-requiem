@@ -391,6 +391,15 @@ The project has moved from a shallow procedural model to a **Deep Module** archi
    - Two consecutive full seed runs preserve exactly one row and the same database ID for each ICE definition.
    - Diagnose and architecture reviews found no actionable defects or required deepening work.
 
+23. **Persisted Per-Character Hotkeys (COMPLETE, 2026-08-02):**
+   - Added an owned-character `PATCH /characters/:id/hotkeys` endpoint with bounded trigger/command validation and reserved-key protection.
+   - Added a JSONB-backed per-character hotkey map and migration with an empty-map default.
+   - Added save, run, and remove controls to the existing command picker; failed saves retain the trigger for retry.
+   - Hotkey expansion occurs only for raw terminal input. Picker, navigation, and saved-command controls dispatch canonical command text directly.
+   - Client writes serialize against the latest confirmed server map so overlapping saves/removals cannot overwrite one another.
+   - Live browser verification confirmed save, reload persistence, expansion-driven movement, and removal; focused tests, all backend tests, and both production builds pass.
+   - Diagnose and architecture re-reviews found no actionable defects or required-now design issues after concurrency, dispatch-boundary, prototype-key, and picker-selection regression fixes; standards review approved the final slice.
+
 ---
 
 ## 4. Immediate Next Steps (Phase 4.4+)
@@ -398,7 +407,7 @@ The project has moved from a shallow procedural model to a **Deep Module** archi
 **Phase 4.4A through 4.4E and the Redmond Barrens content slice are complete locally.**
 
 1. Remaining Phase 4.4 follow-ons:
-   - Persisted hotkey mappings and entity-aware command argument pickers
+   - Entity-aware command argument pickers
    - MissionInstance-wide alert source integration for patrols
 
 **Remaining carry-forward items:**

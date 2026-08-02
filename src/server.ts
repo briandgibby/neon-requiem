@@ -101,7 +101,9 @@ async function bootstrap() {
   const db = new PrismaClient({ adapter });
   const app = Fastify({ logger: true });
 
-  await app.register(import('@fastify/cors'));
+  await app.register(import('@fastify/cors'), {
+    methods: ['GET', 'HEAD', 'POST', 'PATCH'],
+  });
 
   const jwtSigner: JwtSigner = {
     sign: (payload: AuthPayload): string => {

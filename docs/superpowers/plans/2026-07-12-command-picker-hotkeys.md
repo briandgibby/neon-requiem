@@ -37,9 +37,16 @@ Expose registered command metadata to the client and render a mode-aware command
 
 ## Deferred
 
-- Persisted per-character hotkey mappings.
 - Entity-aware dropdowns for argument selection, such as ICE IDs for `spike`.
 - Drag/drop or keyboard remapping UI.
+
+## Follow-on Completed (2026-08-02)
+
+- Persisted bounded trigger-to-command maps per character through an owned-character API.
+- Added save, run, and remove controls to the picker.
+- Kept expansion upstream of command dispatch and limited it to raw terminal input.
+- Serialized client mutations so overlapping saves and removals retain the latest confirmed map.
+- Added regression coverage for ownership, validation, concurrent mutations, and prototype-key safety.
 
 ---
 

@@ -25,6 +25,8 @@ const mockWorldRepo = {
 
 const service = new CharacterService(mockRepo as any, mockWorldRepo as any);
 
+beforeEach(() => jest.clearAllMocks());
+
 describe('CharacterService.createCharacter', () => {
   const baseInput = {
     accountId: 'acc_1',
@@ -128,5 +130,53 @@ describe('CharacterService.listCharacters', () => {
 
     const result = await service.listCharacters('acc_1');
     expect(result).toHaveLength(2);
+  });
+});
+
+describe('CharacterService.updateHotkeys', () => {
+  it('persists normalized hotkeys for an owned character', async () => {
+    mockRepo.findByIdAndAccount.mockResolvedValue({ id: 'char_1', accountId: 'acc_1' });
+    mockRepo.updateCharacter.mockImplementation((id, data) => Promise.resolve({ id, ...data }));
+
+    const result = await service.updateHotkeys('char_1', 'acc_1', {
+      '  Q  ': '  north  ',
+      heal: '  cast heal ally  ',
+    });
+
+    expect(mockRepo.updateCharacter).toHaveBeenCalledWith('char_1', {
+      hotkeys: {
+        q: 'north',
+        heal: 'cast heal ally',
+      },
+    });
+    expect(result.hotkeys).toEqual({ q: 'north', heal: 'cast heal ally' });
+  });
+
+  it('does not update a character owned by another account', async () => {
+    mockRepo.findByIdAndAccount.mockResolvedValue(null);
+
+    await expect(service.updateHotkeys('char_1', 'other_account', { q: 'north' }))
+      .rejects.toThrow(NotFoundError);
+    expect(mockRepo.updateCharacter).not.toHaveBeenCalled();
+  });
+
+  it('rejects more than 32 hotkeys', async () => {
+    mockRepo.findByIdAndAccount.mockResolvedValue({ id: 'char_1', accountId: 'acc_1' });
+    const hotkeys = Object.fromEntries(
+      Array.from({ length: 33 }, (_, index) => [`key-${index}`, 'look']),
+    );
+
+    await expect(service.updateHotkeys('char_1', 'acc_1', hotkeys))
+      .rejects.toThrow(ValidationError);
+    expect(mockRepo.updateCharacter).not.toHaveBeenCalled();
+  });
+
+  it('rejects object prototype property names as triggers', async () => {
+    mockRepo.findByIdAndAccount.mockResolvedValue({ id: 'char_1', accountId: 'acc_1' });
+    const hotkeys = JSON.parse('{"__proto__":"look"}') as Record<string, string>;
+
+    await expect(service.updateHotkeys('char_1', 'acc_1', hotkeys))
+      .rejects.toThrow(ValidationError);
+    expect(mockRepo.updateCharacter).not.toHaveBeenCalled();
   });
 });
