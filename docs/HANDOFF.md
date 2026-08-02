@@ -424,6 +424,13 @@ The project has moved from a shallow procedural model to a **Deep Module** archi
    - Seeded `arcology-security-sweep` across the Executive Office Wing, Arcology Main Plaza, and Corporate Transit Hub. Repeated seeding leaves one definition, and live loading creates one patrol with no warnings.
    - Migration `20260802140000_patrol_definitions` is applied locally; focused tests, the full backend suite, and both production builds pass.
 
+28. **World Safe-Zone Event Override Service (COMPLETE, 2026-08-02):**
+   - Added `WorldEventService` with explicit start/end operations over caller-supplied room IDs; repeated calls are idempotent and report the number of changed rooms.
+   - The service validates the complete target set before mutation and rejects missing rooms, ordinary non-safe rooms, and MissionInstance rooms.
+   - `WorldRepository` transactionally revalidates eligibility, guards the state transition, and rolls the write back if concurrent changes make the affected count inconsistent; its generation-guarded room cache rejects stale in-flight fills after a committed change.
+   - Live verification temporarily disabled protection in the Neon Razor Market and restored the original value. Focused race/cache tests, the full backend suite, and both production builds pass.
+   - Deliberately still deferred: event identity/persistence, scheduling, overlapping-event ownership, faction/allegiance behavior, rewards, and crash-recovery restoration.
+
 ---
 
 ## 4. Immediate Next Steps (Phase 4.4+)
@@ -435,7 +442,6 @@ There are no remaining Phase 4.4 follow-ons in the tracked implementation plans.
 **Remaining carry-forward items:**
 - Snapshot history/admin tooling — no admin-facing snapshot history view yet
 - Frontend lint debt in `client/src` (explicit `any`, React hook rules, static components declared during render)
-- `WorldEventService` — `safeZoneOverrideActive` flag is wired at the DB level; a service to flip it during events is not yet implemented
 
 
 ---
