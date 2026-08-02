@@ -72,14 +72,15 @@ describe('MatrixTickSystem', () => {
 describe('MatrixTickSystem — instance alert sync', () => {
   afterEach(() => jest.restoreAllMocks());
 
-  it('syncs GREEN alert decay to the linked MissionInstance', async () => {
+  it('restores the authoritative MissionInstance alert to a linked node', async () => {
     const registry = new EcsRegistry();
     const matrixRepo = { updateNodeAlert: jest.fn().mockResolvedValue(undefined) };
     const instanceRepo = {
       findInstanceByRoomId: jest.fn().mockResolvedValue({ id: 'inst-1', alertLevel: 'YELLOW' }),
-      updateInstanceAlertLevel: jest.fn().mockResolvedValue(undefined),
+      escalateAlertFromRoom: jest.fn().mockResolvedValue('unchanged'),
+      ensureAlertFromRoom: jest.fn().mockResolvedValue('unchanged'),
     };
-    jest.spyOn(Math, 'random').mockReturnValue(0.05); // triggers decay
+    jest.spyOn(Math, 'random').mockReturnValue(0.05);
 
     const system = new MatrixTickSystem(registry, matrixRepo as any, instanceRepo as any);
 
@@ -87,7 +88,7 @@ describe('MatrixTickSystem — instance alert sync', () => {
     registry.addComponent<MatrixNodeComponent>(nodeEntityId, ComponentTypes.MatrixNode, {
       nodeId: 'node-db-1',
       securityLevel: 2,
-      alertLevel: 'YELLOW',
+      alertLevel: 'GREEN',
       linkedRoomId: 'room-1',
       breachProgress: 0,
     });
@@ -95,7 +96,95 @@ describe('MatrixTickSystem — instance alert sync', () => {
     await system.onTick(1);
 
     expect(instanceRepo.findInstanceByRoomId).toHaveBeenCalledWith('room-1');
-    expect(instanceRepo.updateInstanceAlertLevel).toHaveBeenCalledWith('inst-1', 'GREEN');
+    expect(matrixRepo.updateNodeAlert).toHaveBeenCalledWith('node-db-1', 'YELLOW');
+    expect(instanceRepo.escalateAlertFromRoom).not.toHaveBeenCalled();
+  });
+
+  it('retries an instance-to-node write after persistence fails', async () => {
+    const registry = new EcsRegistry();
+    const matrixRepo = {
+      updateNodeAlert: jest.fn()
+        .mockRejectedValueOnce(new Error('database unavailable'))
+        .mockResolvedValueOnce(undefined),
+    };
+    const instanceRepo = {
+      findInstanceByRoomId: jest.fn().mockResolvedValue({ id: 'inst-1', alertLevel: 'YELLOW' }),
+      escalateAlertFromRoom: jest.fn(),
+      ensureAlertFromRoom: jest.fn(),
+    };
+    const system = new MatrixTickSystem(registry, matrixRepo as any, instanceRepo as any);
+    const nodeEntityId = registry.createEntity();
+    registry.addComponent<MatrixNodeComponent>(nodeEntityId, ComponentTypes.MatrixNode, {
+      nodeId: 'node-db-1', securityLevel: 2, alertLevel: 'GREEN', linkedRoomId: 'room-1', breachProgress: 0,
+    });
+
+    await system.onTick(1);
+    await system.onTick(2);
+
+    expect(matrixRepo.updateNodeAlert).toHaveBeenCalledTimes(2);
+    expect(registry.getComponent<MatrixNodeComponent>(nodeEntityId, ComponentTypes.MatrixNode)?.alertLevel)
+      .toBe('YELLOW');
+  });
+
+  it('escalates persisted instance nodes even when no ECS node has been materialized', async () => {
+    const registry = new EcsRegistry();
+    const matrixRepo = {
+      updateNodeAlert: jest.fn(),
+      escalateInstanceNodes: jest.fn().mockResolvedValue({ count: 1 }),
+    };
+    const instanceRepo = {
+      findInstanceByRoomId: jest.fn(),
+      escalateAlertFromRoom: jest.fn(),
+      ensureAlertFromRoom: jest.fn(),
+      findActiveInstanceAlertSources: jest.fn().mockResolvedValue([
+        { instanceId: 'inst-1', roomId: 'room-1', alarmState: 'RED' },
+      ]),
+    };
+    const system = new MatrixTickSystem(registry, matrixRepo as any, instanceRepo as any);
+
+    await system.onTick(1);
+
+    expect(matrixRepo.escalateInstanceNodes).toHaveBeenCalledWith('inst-1', 'RED');
+  });
+
+  it('escalates the MissionInstance when a linked node has the higher alert', async () => {
+    const registry = new EcsRegistry();
+    const matrixRepo = { updateNodeAlert: jest.fn().mockResolvedValue(undefined) };
+    const instanceRepo = {
+      findInstanceByRoomId: jest.fn().mockResolvedValue({ id: 'inst-1', alertLevel: 'GREEN' }),
+      escalateAlertFromRoom: jest.fn().mockResolvedValue('escalated'),
+      ensureAlertFromRoom: jest.fn().mockResolvedValue('escalated'),
+    };
+    const system = new MatrixTickSystem(registry, matrixRepo as any, instanceRepo as any);
+    const nodeEntityId = registry.createEntity();
+    registry.addComponent<MatrixNodeComponent>(nodeEntityId, ComponentTypes.MatrixNode, {
+      nodeId: 'node-db-1', securityLevel: 2, alertLevel: 'RED', linkedRoomId: 'room-1', breachProgress: 0,
+    });
+
+    await system.onTick(1);
+
+    expect(instanceRepo.ensureAlertFromRoom).toHaveBeenCalledWith('room-1', 'RED');
+  });
+
+  it('repairs a missing alert source when node and MissionInstance levels match', async () => {
+    const registry = new EcsRegistry();
+    const matrixRepo = { updateNodeAlert: jest.fn() };
+    const instanceRepo = {
+      findInstanceByRoomId: jest.fn().mockResolvedValue({
+        id: 'inst-1', alertLevel: 'YELLOW', alertSourceRoomId: null,
+      }),
+      escalateAlertFromRoom: jest.fn().mockResolvedValue('source-updated'),
+      ensureAlertFromRoom: jest.fn().mockResolvedValue('source-updated'),
+    };
+    const system = new MatrixTickSystem(registry, matrixRepo as any, instanceRepo as any);
+    const nodeEntityId = registry.createEntity();
+    registry.addComponent<MatrixNodeComponent>(nodeEntityId, ComponentTypes.MatrixNode, {
+      nodeId: 'node-db-1', securityLevel: 2, alertLevel: 'YELLOW', linkedRoomId: 'room-1', breachProgress: 0,
+    });
+
+    await system.onTick(1);
+
+    expect(instanceRepo.ensureAlertFromRoom).toHaveBeenCalledWith('room-1', 'YELLOW');
   });
 
   it('does NOT call updateInstanceAlertLevel when node has no linked instance', async () => {
@@ -103,7 +192,8 @@ describe('MatrixTickSystem — instance alert sync', () => {
     const matrixRepo = { updateNodeAlert: jest.fn().mockResolvedValue(undefined) };
     const instanceRepo = {
       findInstanceByRoomId: jest.fn().mockResolvedValue(null),
-      updateInstanceAlertLevel: jest.fn(),
+      escalateAlertFromRoom: jest.fn(),
+      ensureAlertFromRoom: jest.fn(),
     };
     jest.spyOn(Math, 'random').mockReturnValue(0.05);
 
@@ -120,6 +210,26 @@ describe('MatrixTickSystem — instance alert sync', () => {
 
     await system.onTick(1);
 
-    expect(instanceRepo.updateInstanceAlertLevel).not.toHaveBeenCalled();
+    expect(instanceRepo.ensureAlertFromRoom).not.toHaveBeenCalled();
+  });
+
+  it('does not decay a linked node when MissionInstance lookup fails', async () => {
+    const registry = new EcsRegistry();
+    const matrixRepo = { updateNodeAlert: jest.fn() };
+    const instanceRepo = {
+      findInstanceByRoomId: jest.fn().mockRejectedValue(new Error('database unavailable')),
+      escalateAlertFromRoom: jest.fn(),
+      ensureAlertFromRoom: jest.fn(),
+    };
+    jest.spyOn(Math, 'random').mockReturnValue(0.05);
+    const system = new MatrixTickSystem(registry, matrixRepo as any, instanceRepo as any);
+    const nodeEntityId = registry.createEntity();
+    registry.addComponent<MatrixNodeComponent>(nodeEntityId, ComponentTypes.MatrixNode, {
+      nodeId: 'node-db-1', securityLevel: 2, alertLevel: 'YELLOW', linkedRoomId: 'room-1', breachProgress: 0,
+    });
+
+    await system.onTick(1);
+
+    expect(matrixRepo.updateNodeAlert).not.toHaveBeenCalled();
   });
 });

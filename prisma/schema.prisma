@@ -378,6 +378,7 @@ model MissionInstance {
   activeMission    ActiveMission @relation(fields: [activeMissionId], references: [id], onDelete: Cascade)
   status           String    @default("PENDING")   // PENDING, ACTIVE, COMPLETED, ABANDONED
   alertLevel       String    @default("GREEN")      // GREEN, YELLOW, RED
+  alertSourceRoomId String?
   partyLeaderId    String
   createdAt        DateTime  @default(now())
   activatedAt      DateTime?

@@ -408,6 +408,15 @@ The project has moved from a shallow procedural model to a **Deep Module** archi
    - Tell remains on its existing free-text/global-player path, augmented with non-exhaustive local-occupant suggestions. Suggestions use stable character IDs behind display names to avoid local duplicate/multi-word-name misdelivery.
    - Pure composition tests cover movement alias preservation and opaque ICE IDs; registry and room-view contracts have focused regression coverage.
 
+25. **MissionInstance-Wide Alert Sources (COMPLETE, 2026-08-02):**
+   - Added a persisted `alertSourceRoomId` so an instance-wide YELLOW/RED level has a concrete patrol destination after its originating ECS session ends.
+   - Physical security alarms and matrix actions escalate the owning active MissionInstance with their source room; updates are monotonic and use guarded `updateMany` writes to avoid concurrent downgrades.
+   - `MatrixTickSystem` reconciles active MissionInstance and matrix-node alerts in both directions, including persisted nodes not yet materialized in ECS; mission nodes never auto-decay and failed writes remain retryable.
+   - `AlertPatrolSystem` merges ECS combat alerts with active persisted instance sources, prefers the strongest duplicate source, and prevents patrols from crossing MissionInstance boundaries.
+   - Live events may replace a same-level source, while convergence retries can only fill a missing source. Both paths use atomic guards, so an older retry cannot overwrite a newer event during a race.
+   - Source updates validate that the room belongs to the active instance; resolved/inactive instances do not continue driving matrix alerts or patrol movement, even while an ECS combat session lingers before cleanup.
+   - The migration is applied locally; no active YELLOW/RED instances required source backfill. Focused tests, all 240 backend tests, and both production builds pass.
+
 ---
 
 ## 4. Immediate Next Steps (Phase 4.4+)
@@ -415,7 +424,8 @@ The project has moved from a shallow procedural model to a **Deep Module** archi
 **Phase 4.4A through 4.4E and the Redmond Barrens content slice are complete locally.**
 
 1. Remaining Phase 4.4 follow-ons:
-   - MissionInstance-wide alert source integration for patrols
+   - Patrol broadcast/combat log output
+   - Persisted patrol definitions in world content
 
 **Remaining carry-forward items:**
 - Snapshot history/admin tooling — no admin-facing snapshot history view yet

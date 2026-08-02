@@ -298,10 +298,13 @@ describe('MatrixService', () => {
       };
       const dispatcher = new MoveDispatcher();
       dispatcher.register(new MatrixDataSpikeExecutor());
+      const instanceRepo = {
+        escalateAlertFromRoom: jest.fn().mockResolvedValue('escalated'),
+      };
 
-      const service = new MatrixService(matrixRepo as any, registry, dispatcher);
+      const service = new MatrixService(matrixRepo as any, registry, dispatcher, undefined, instanceRepo as any);
 
-      return { service, registry, matrixRepo, deckerEntityId, iceEntityId, nodeEntityId };
+      return { service, registry, matrixRepo, instanceRepo, deckerEntityId, iceEntityId, nodeEntityId };
     }
 
     it('flushes ICE HP to DB after a data spike', async () => {
@@ -324,6 +327,14 @@ describe('MatrixService', () => {
 
       const decker = registry.getComponent<DeckerComponent>(deckerEntityId, ComponentTypes.Decker);
       expect(decker!.overwatchScore).toBe(1);
+    });
+
+    it('escalates the linked MissionInstance after a data spike', async () => {
+      const { service, instanceRepo } = buildDataSpikeEnv();
+
+      await service.dataSpike('char-1', 'account-1', 'ice-db-1');
+
+      expect(instanceRepo.escalateAlertFromRoom).toHaveBeenCalledWith('room-1', 'RED');
     });
   });
 
@@ -426,10 +437,13 @@ describe('MatrixService', () => {
           return mockResult;
         }),
       } as any;
+      const instanceRepo = {
+        escalateAlertFromRoom: jest.fn().mockResolvedValue('escalated'),
+      };
 
-      const service = new MatrixService(matrixRepo as any, registry, dispatcher);
+      const service = new MatrixService(matrixRepo as any, registry, dispatcher, undefined, instanceRepo as any);
 
-      return { service, registry, matrixRepo, deckerEntityId, nodeEntityId };
+      return { service, registry, matrixRepo, instanceRepo, deckerEntityId, nodeEntityId };
     }
 
     it('flushes alert level to DB after brute/sleaze regardless of success', async () => {
@@ -438,6 +452,14 @@ describe('MatrixService', () => {
       await service.performHacking('char-1', 'account-1', 'brute');
 
       expect(matrixRepo.updateNodeAlert).toHaveBeenCalledWith('node-db-1', 'RED');
+    });
+
+    it('escalates the linked MissionInstance from the matrix node room', async () => {
+      const { service, instanceRepo } = buildHackingEnv(true);
+
+      await service.performHacking('char-1', 'account-1', 'brute');
+
+      expect(instanceRepo.escalateAlertFromRoom).toHaveBeenCalledWith('room-1', 'RED');
     });
 
     it('flushes alert level to DB even when hack fails', async () => {

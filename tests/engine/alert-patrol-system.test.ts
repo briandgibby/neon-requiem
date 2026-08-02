@@ -14,6 +14,7 @@ type TestRoom = {
   slug: string;
   factionOwner: string | null;
   exits: Record<string, string>;
+  missionInstanceId?: string | null;
 };
 
 function createWorldPolicy(safeRooms: string[] = []) {
@@ -60,6 +61,22 @@ function createLinearWorldPolicy(roomCount: number) {
   };
 }
 
+function withInstanceScopes<T extends ReturnType<typeof createWorldPolicy>>(
+  worldPolicy: T,
+  instanceByRoomId: Record<string, string | null>,
+) {
+  return {
+    ...worldPolicy,
+    getRoom: jest.fn(async (roomId: string) => {
+      const room = await worldPolicy.getRoom(roomId);
+      return {
+        ...room,
+        missionInstanceId: instanceByRoomId[room.id] ?? null,
+      };
+    }),
+  };
+}
+
 function addPatrol(registry: EcsRegistry, roomId: string, patrolRoute?: string[]): string {
   const entityId = registry.createEntity();
   registry.addComponent<NpcIdComponent>(entityId, ComponentTypes.NpcId, { mobId: entityId });
@@ -94,6 +111,146 @@ function addCombatSession(
 }
 
 describe('AlertPatrolSystem', () => {
+  it('moves patrols toward persisted MissionInstance alert sources', async () => {
+    const registry = new EcsRegistry();
+    const baseWorldPolicy = createWorldPolicy();
+    const worldPolicy = {
+      ...baseWorldPolicy,
+      getRoom: jest.fn(async (roomId: string) => ({
+        ...await baseWorldPolicy.getRoom(roomId),
+        missionInstanceId: 'inst-1',
+      })),
+    };
+    const instanceAlerts = {
+      escalateAlertFromRoom: jest.fn().mockResolvedValue('unchanged'),
+      ensureAlertFromRoom: jest.fn().mockResolvedValue('unchanged'),
+      findActiveInstanceAlertSources: jest.fn().mockResolvedValue([
+        { instanceId: 'inst-1', roomId: 'room-3', alarmState: 'RED' },
+      ]),
+    };
+    const system = new AlertPatrolSystem(registry, worldPolicy, undefined, instanceAlerts);
+
+    const patrolId = addPatrol(registry, 'room-1');
+
+    await system.onTick(1);
+
+    const position = registry.getComponent<PositionComponent>(patrolId, ComponentTypes.Position);
+    expect(position?.roomId).toBe('room-2');
+  });
+
+  it('does not pull patrols across MissionInstance boundaries', async () => {
+    const registry = new EcsRegistry();
+    const baseWorldPolicy = createWorldPolicy();
+    const worldPolicy = {
+      ...baseWorldPolicy,
+      getRoom: jest.fn(async (roomId: string) => ({
+        ...await baseWorldPolicy.getRoom(roomId),
+        missionInstanceId: roomId === 'room-1' || roomId === 'room-one' ? 'inst-a' : 'inst-b',
+      })),
+    };
+    const instanceAlerts = {
+      escalateAlertFromRoom: jest.fn().mockResolvedValue('unchanged'),
+      ensureAlertFromRoom: jest.fn().mockResolvedValue('unchanged'),
+      findActiveInstanceAlertSources: jest.fn().mockResolvedValue([
+        { instanceId: 'inst-b', roomId: 'room-3', alarmState: 'RED' },
+      ]),
+    };
+    const system = new AlertPatrolSystem(registry, worldPolicy, undefined, instanceAlerts);
+    const patrolId = addPatrol(registry, 'room-1');
+
+    await system.onTick(1);
+
+    const position = registry.getComponent<PositionComponent>(patrolId, ComponentTypes.Position);
+    expect(position?.roomId).toBe('room-1');
+  });
+
+  it('retries CombatSession escalation through the instance alert authority', async () => {
+    const registry = new EcsRegistry();
+    const worldPolicy = createWorldPolicy();
+    const instanceAlerts = {
+      escalateAlertFromRoom: jest.fn().mockResolvedValue('escalated'),
+      ensureAlertFromRoom: jest.fn().mockResolvedValue('escalated'),
+      findActiveInstanceAlertSources: jest.fn().mockResolvedValue([]),
+    };
+    const system = new AlertPatrolSystem(registry, worldPolicy, undefined, instanceAlerts);
+    addCombatSession(registry, 'room-2', 'RED');
+
+    await system.onTick(1);
+
+    expect(instanceAlerts.ensureAlertFromRoom).toHaveBeenCalledWith('room-2', 'RED');
+  });
+
+  it('ignores lingering ECS alerts from inactive MissionInstances', async () => {
+    const registry = new EcsRegistry();
+    const worldPolicy = withInstanceScopes(createWorldPolicy(), {
+      'room-1': 'inst-1',
+      'room-2': 'inst-1',
+    });
+    const instanceAlerts = {
+      escalateAlertFromRoom: jest.fn(),
+      ensureAlertFromRoom: jest.fn().mockResolvedValue('inactive-instance'),
+      findActiveInstanceAlertSources: jest.fn().mockResolvedValue([]),
+    };
+    const system = new AlertPatrolSystem(registry, worldPolicy, undefined, instanceAlerts);
+    const patrolId = addPatrol(registry, 'room-1');
+    addCombatSession(registry, 'room-2', 'RED');
+
+    await system.onTick(1);
+
+    expect(registry.getComponent<PositionComponent>(patrolId, ComponentTypes.Position)?.roomId).toBe('room-1');
+  });
+
+  it('does not follow unscoped ECS alerts into another MissionInstance', async () => {
+    const registry = new EcsRegistry();
+    const worldPolicy = withInstanceScopes(createWorldPolicy(), {
+      'room-1': 'inst-a',
+      'room-2': 'inst-a',
+      'room-3': 'inst-b',
+    });
+    const system = new AlertPatrolSystem(registry, worldPolicy);
+    const patrolId = addPatrol(registry, 'room-1');
+    addCombatSession(registry, 'room-3', 'RED');
+
+    await system.onTick(1);
+
+    const position = registry.getComponent<PositionComponent>(patrolId, ComponentTypes.Position);
+    expect(position?.roomId).toBe('room-1');
+  });
+
+  it('does not cross a MissionInstance boundary in an authored YELLOW route', async () => {
+    const registry = new EcsRegistry();
+    const worldPolicy = withInstanceScopes(createWorldPolicy(), {
+      'room-1': 'inst-a',
+      'room-2': 'inst-b',
+      'room-3': 'inst-a',
+    });
+    const system = new AlertPatrolSystem(registry, worldPolicy);
+    const patrolId = addPatrol(registry, 'room-1', ['room-1', 'room-2', 'room-3']);
+    addCombatSession(registry, 'room-3', 'YELLOW');
+
+    await system.onTick(1);
+
+    const position = registry.getComponent<PositionComponent>(patrolId, ComponentTypes.Position);
+    expect(position?.roomId).toBe('room-1');
+  });
+
+  it('does not cross a MissionInstance boundary during RED graph search', async () => {
+    const registry = new EcsRegistry();
+    const worldPolicy = withInstanceScopes(createWorldPolicy(), {
+      'room-1': 'inst-a',
+      'room-2': 'inst-b',
+      'room-3': 'inst-a',
+    });
+    const system = new AlertPatrolSystem(registry, worldPolicy);
+    const patrolId = addPatrol(registry, 'room-1');
+    addCombatSession(registry, 'room-3', 'RED');
+
+    await system.onTick(1);
+
+    const position = registry.getComponent<PositionComponent>(patrolId, ComponentTypes.Position);
+    expect(position?.roomId).toBe('room-1');
+  });
+
   it('does not move patrols toward GREEN sessions', async () => {
     const registry = new EcsRegistry();
     const worldPolicy = createWorldPolicy();

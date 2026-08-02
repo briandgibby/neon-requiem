@@ -17,6 +17,7 @@ import {
 } from '../../engine/ecs/components';
 import { PlayerEntityFactory } from '../../engine/ecs/factories/player-entity-factory';
 import { MAX_AP } from '../../shared/constants';
+import { InstanceAlertAuthority } from '../mission/instance.repository';
 
 type NodeCreatedCallback = (roomId: string, nodeEntityId: string) => Promise<void>;
 
@@ -45,7 +46,23 @@ export class MatrixService {
     private readonly ecsRegistry: EcsRegistry,
     private readonly moveDispatcher: MoveDispatcher,
     private readonly onNodeCreated?: NodeCreatedCallback,
+    private readonly instanceAlerts?: InstanceAlertAuthority,
   ) {}
+
+  private async persistNodeAlert(node: MatrixNodeComponent): Promise<void> {
+    try {
+      await this.matrixRepo.updateNodeAlert(node.nodeId, node.alertLevel);
+    } catch (_err) {
+      // ECS state remains authoritative for the active session.
+    }
+
+    if (!this.instanceAlerts || !node.linkedRoomId || node.alertLevel === 'GREEN') return;
+    try {
+      await this.instanceAlerts.escalateAlertFromRoom(node.linkedRoomId, node.alertLevel);
+    } catch (_err) {
+      // The next Matrix tick will retry plane synchronization.
+    }
+  }
 
   async createInstanceNode(params: {
     slug: string;
@@ -370,11 +387,7 @@ export class MatrixService {
     if (decker) {
       const node = this.ecsRegistry.getComponent<MatrixNodeComponent>(decker.activeNodeEntityId, ComponentTypes.MatrixNode);
       if (node) {
-        try {
-          await this.matrixRepo.updateNodeAlert(node.nodeId, node.alertLevel);
-        } catch (_err) {
-          // Non-fatal
-        }
+        await this.persistNodeAlert(node);
         if (result.success) {
           node.breachProgress += 1;
         }
@@ -415,6 +428,9 @@ export class MatrixService {
         // Non-fatal
       }
     }
+
+    const node = this.ecsRegistry.getComponent<MatrixNodeComponent>(decker.activeNodeEntityId, ComponentTypes.MatrixNode);
+    if (node) await this.persistNodeAlert(node);
 
     // Increment OS stub
     decker.overwatchScore += 1;

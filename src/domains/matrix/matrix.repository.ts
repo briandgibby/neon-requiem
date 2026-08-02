@@ -24,6 +24,17 @@ export class MatrixRepository {
     });
   }
 
+  async escalateInstanceNodes(instanceId: string, alertLevel: 'YELLOW' | 'RED') {
+    const lowerLevels = alertLevel === 'RED' ? ['GREEN', 'YELLOW'] : ['GREEN'];
+    return this.db.matrixNode.updateMany({
+      where: {
+        alertLevel: { in: lowerLevels },
+        room: { missionInstanceId: instanceId },
+      },
+      data: { alertLevel },
+    });
+  }
+
   async updateIceHp(iceId: string, currentHp: number) {
     return this.db.intCountermeasure.update({
       where: { id: iceId },

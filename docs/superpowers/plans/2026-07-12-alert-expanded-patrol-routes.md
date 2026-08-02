@@ -42,10 +42,16 @@ Implemented:
 
 Deferred:
 
-- MissionInstance-wide alert source integration beyond ECS `CombatSessionComponent`.
 - Patrol broadcast/combat log output.
 - Weighted or randomized patrol-route selection.
 - Persisted patrol definitions in world content.
+
+Follow-on completed (2026-08-02):
+
+- Persisted the latest source room with active MissionInstance YELLOW/RED alerts.
+- Escalated the shared alert from both physical alarms and matrix actions.
+- Reconciled active MissionInstance alert authority back into all linked persisted matrix nodes without mission auto-decay, including nodes not yet materialized in ECS.
+- Fed scoped persisted sources into `AlertPatrolSystem` alongside ECS combat sessions, with fill-only retry semantics and inactive-instance suppression.
 
 ---
 

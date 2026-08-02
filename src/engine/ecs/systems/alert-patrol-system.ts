@@ -8,13 +8,17 @@ import {
   PositionComponent,
 } from '../components';
 import { RoomLookup, SafeZonePolicy } from '../../../domains/world/world.types';
+import { InstanceAlertAuthority } from '../../../domains/mission/instance.repository';
 
 interface AlertPatrolWorldPolicy extends SafeZonePolicy, RoomLookup {}
 type AlertPatrolRoom = Awaited<ReturnType<RoomLookup['getRoom']>>;
 
-type ActiveAlertSession = Pick<CombatSessionComponent, 'roomId' | 'alarmState'>;
+type ActiveAlertSession = Pick<CombatSessionComponent, 'roomId' | 'alarmState'> & { instanceId?: string };
 interface AlertPatrolDiagnostics {
   warn(obj: unknown, msg: string): void;
+}
+interface InstanceAlertSource extends InstanceAlertAuthority {
+  findActiveInstanceAlertSources(): Promise<Array<ActiveAlertSession & { instanceId: string }>>;
 }
 
 const MAX_RED_PATROL_SEARCH_DEPTH = 8;
@@ -27,10 +31,11 @@ export class AlertPatrolSystem implements Tickable {
     private readonly registry: EcsRegistry,
     private readonly worldPolicy: AlertPatrolWorldPolicy,
     private readonly diagnostics?: AlertPatrolDiagnostics,
+    private readonly instanceAlerts?: InstanceAlertSource,
   ) {}
 
   async onTick(_tickCount: number): Promise<void> {
-    const alertSessions = this.getActiveAlertSessions();
+    const alertSessions = await this.getActiveAlertSessions();
     if (alertSessions.length === 0) return;
 
     const safeZoneCache = new Map<string, boolean>();
@@ -53,7 +58,7 @@ export class AlertPatrolSystem implements Tickable {
         const currentRoomSafeZone = await this.tryGetEffectiveSafeZone(position.roomId, safeZoneCache);
         if (currentRoomSafeZone !== false) continue;
 
-        await this.moveTowardFirstReachableAlert(ai, position, alertSessions, safeZoneCache);
+        await this.moveTowardFirstReachableAlert(patrolId, ai, position, alertSessions, safeZoneCache);
       } catch (err) {
         this.reportLookupFailure(err, {
           patrolId,
@@ -63,13 +68,50 @@ export class AlertPatrolSystem implements Tickable {
     }
   }
 
-  private getActiveAlertSessions(): ActiveAlertSession[] {
+  private async getActiveAlertSessions(): Promise<ActiveAlertSession[]> {
     const sessionIds = this.registry.getEntitiesWith([ComponentTypes.CombatSession]);
-    const sessions = sessionIds
+    const ecsSessions: ActiveAlertSession[] = sessionIds
       .map((sessionId) => this.registry.getComponent<CombatSessionComponent>(sessionId, ComponentTypes.CombatSession))
-      .filter((session): session is CombatSessionComponent => !!session && session.alarmState !== 'GREEN');
+      .filter((session): session is CombatSessionComponent => !!session && session.alarmState !== 'GREEN')
+      .map((session) => ({ roomId: session.roomId, alarmState: session.alarmState }));
+    const sessions: ActiveAlertSession[] = [];
 
-    return sessions.sort((a, b) => this.alertPriority(b.alarmState) - this.alertPriority(a.alarmState));
+    if (this.instanceAlerts) {
+      for (const session of ecsSessions) {
+        try {
+          const outcome = await this.instanceAlerts.ensureAlertFromRoom(session.roomId, session.alarmState);
+          if (outcome === 'inactive-instance') continue;
+        } catch (err) {
+          this.diagnostics?.warn({ err, roomId: session.roomId }, 'Alert patrol could not persist combat alert');
+        }
+        sessions.push(session);
+      }
+
+      try {
+        sessions.push(...await this.instanceAlerts.findActiveInstanceAlertSources());
+      } catch (err) {
+        this.diagnostics?.warn({ err }, 'Alert patrol could not load MissionInstance alert sources');
+      }
+    } else {
+      sessions.push(...ecsSessions);
+    }
+
+    const strongestByRoom = new Map<string, ActiveAlertSession>();
+    for (const session of sessions) {
+      const current = strongestByRoom.get(session.roomId);
+      const sessionPriority = this.alertPriority(session.alarmState);
+      const currentPriority = current ? this.alertPriority(current.alarmState) : -1;
+      if (
+        !current
+        || sessionPriority > currentPriority
+        || (sessionPriority === currentPriority && session.instanceId && !current.instanceId)
+      ) {
+        strongestByRoom.set(session.roomId, session);
+      }
+    }
+
+    return [...strongestByRoom.values()]
+      .sort((a, b) => this.alertPriority(b.alarmState) - this.alertPriority(a.alarmState));
   }
 
   private alertPriority(alarmState: CombatSessionComponent['alarmState']): number {
@@ -79,20 +121,40 @@ export class AlertPatrolSystem implements Tickable {
   }
 
   private async moveTowardFirstReachableAlert(
+    patrolId: string,
     ai: AiComponent,
     position: PositionComponent,
     alertSessions: ActiveAlertSession[],
     safeZoneCache: Map<string, boolean>,
   ): Promise<void> {
+    const currentRoom = await this.worldPolicy.getRoom(position.roomId);
+    const patrolScope = currentRoom.missionInstanceId ?? null;
     for (const alertSession of alertSessions) {
+      let alertRoom: AlertPatrolRoom;
+      try {
+        alertRoom = await this.worldPolicy.getRoom(alertSession.roomId);
+      } catch (err) {
+        this.reportLookupFailure(err, { patrolId, roomId: alertSession.roomId });
+        continue;
+      }
+      const alertScope = alertRoom.missionInstanceId ?? null;
+      if (alertScope !== patrolScope) continue;
+      if (alertSession.instanceId && alertSession.instanceId !== alertScope) continue;
+
       if (position.roomId === alertSession.roomId) {
         ai.state = 'hostile';
         return;
       }
 
       const nextRoomId = alertSession.alarmState === 'RED'
-        ? await this.findNextGraphPatrolRoomId(position.roomId, alertSession.roomId, safeZoneCache)
-        : await this.findNextRoutePatrolRoomId(ai.patrolRoute, position.roomId, alertSession.roomId, safeZoneCache);
+        ? await this.findNextGraphPatrolRoomId(position.roomId, alertSession.roomId, patrolScope, safeZoneCache)
+        : await this.findNextRoutePatrolRoomId(
+          ai.patrolRoute,
+          position.roomId,
+          alertSession.roomId,
+          patrolScope,
+          safeZoneCache,
+        );
 
       if (!nextRoomId) continue;
 
@@ -108,6 +170,7 @@ export class AlertPatrolSystem implements Tickable {
     patrolRoute: string[] | undefined,
     currentRoomId: string,
     alertRoomId: string,
+    patrolScope: string | null,
     safeZoneCache: Map<string, boolean>,
   ): Promise<string | undefined> {
     if (!patrolRoute || patrolRoute.length < 2) return undefined;
@@ -122,6 +185,8 @@ export class AlertPatrolSystem implements Tickable {
       this.worldPolicy.getRoom(nextRouteEntry),
     ]);
     if (!Object.values(currentRoom.exits ?? {}).includes(nextRoom.slug)) return undefined;
+    if ((currentRoom.missionInstanceId ?? null) !== patrolScope) return undefined;
+    if ((nextRoom.missionInstanceId ?? null) !== patrolScope) return undefined;
 
     const nextRoomSafeZone = await this.tryGetEffectiveSafeZone(nextRoom.id, safeZoneCache);
     if (nextRoomSafeZone !== false) return undefined;
@@ -132,6 +197,7 @@ export class AlertPatrolSystem implements Tickable {
   private async findNextGraphPatrolRoomId(
     startRoomId: string,
     alertRoomId: string,
+    patrolScope: string | null,
     safeZoneCache: Map<string, boolean>,
   ): Promise<string | undefined> {
     const [startRoom, alertRoom] = await Promise.all([
@@ -139,6 +205,8 @@ export class AlertPatrolSystem implements Tickable {
       this.worldPolicy.getRoom(alertRoomId),
     ]);
     if (startRoom.id === alertRoom.id) return undefined;
+    if ((startRoom.missionInstanceId ?? null) !== patrolScope) return undefined;
+    if ((alertRoom.missionInstanceId ?? null) !== patrolScope) return undefined;
 
     const queue: Array<{ room: AlertPatrolRoom; depth: number; firstStepRoomId?: string }> = [
       { room: startRoom, depth: 0 },
@@ -157,6 +225,7 @@ export class AlertPatrolSystem implements Tickable {
         if (nextRoom.slug !== exitRoomSlug) continue;
         if (visitedRoomIds.has(nextRoom.id)) continue;
         visitedRoomIds.add(nextRoom.id);
+        if ((nextRoom.missionInstanceId ?? null) !== patrolScope) continue;
 
         const nextRoomSafeZone = await this.tryGetEffectiveSafeZone(nextRoom.id, safeZoneCache);
         if (nextRoomSafeZone !== false) continue;

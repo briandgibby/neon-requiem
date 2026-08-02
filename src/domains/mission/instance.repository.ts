@@ -1,6 +1,18 @@
 import { PrismaClient } from '@prisma/client';
 
-const ALERT_ORDER = ['GREEN', 'YELLOW', 'RED'];
+const ALERT_LEVELS = ['GREEN', 'YELLOW', 'RED'] as const;
+type AlertLevel = typeof ALERT_LEVELS[number];
+export type InstanceAlertUpdateResult =
+  | 'escalated'
+  | 'source-updated'
+  | 'unchanged'
+  | 'not-in-instance'
+  | 'inactive-instance';
+
+export interface InstanceAlertAuthority {
+  escalateAlertFromRoom(roomId: string, newLevel: string): Promise<InstanceAlertUpdateResult>;
+  ensureAlertFromRoom(roomId: string, newLevel: string): Promise<InstanceAlertUpdateResult>;
+}
 
 export class InstanceRepository {
   constructor(private readonly db: PrismaClient) {}
@@ -60,14 +72,124 @@ export class InstanceRepository {
     return this.db.missionInstance.update({ where: { id: instanceId }, data });
   }
 
-  async updateInstanceAlertLevel(instanceId: string, newLevel: string) {
-    const instance = await this.db.missionInstance.findUnique({ where: { id: instanceId } });
-    if (!instance) return;
-    const newIdx = ALERT_ORDER.indexOf(newLevel);
-    const currentIdx = ALERT_ORDER.indexOf(instance.alertLevel);
-    if (newIdx === -1 || currentIdx === -1) return;  // unknown alert level — do nothing
-    if (newIdx <= currentIdx) return;
-    return this.db.missionInstance.update({ where: { id: instanceId }, data: { alertLevel: newLevel } });
+  async updateInstanceAlertLevel(
+    instanceId: string,
+    newLevel: string,
+    sourceRoomId?: string,
+  ): Promise<'escalated' | 'source-updated' | 'unchanged'> {
+    return this.writeInstanceAlertLevel(instanceId, newLevel, sourceRoomId, 'replace');
+  }
+
+  private async writeInstanceAlertLevel(
+    instanceId: string,
+    newLevel: string,
+    sourceRoomId: string | undefined,
+    sameLevelSourcePolicy: 'replace' | 'fill',
+  ): Promise<'escalated' | 'source-updated' | 'unchanged'> {
+    if (newLevel !== 'YELLOW' && newLevel !== 'RED') return 'unchanged';
+
+    const lowerLevels: AlertLevel[] = newLevel === 'RED' ? ['GREEN', 'YELLOW'] : ['GREEN'];
+    const sourceRoomFilter = sourceRoomId ? { rooms: { some: { id: sourceRoomId } } } : {};
+    const escalated = await this.db.missionInstance.updateMany({
+      where: {
+        id: instanceId,
+        status: 'ACTIVE',
+        alertLevel: { in: lowerLevels },
+        ...sourceRoomFilter,
+      },
+      data: {
+        alertLevel: newLevel,
+        ...(sourceRoomId ? { alertSourceRoomId: sourceRoomId } : {}),
+      },
+    });
+    if (escalated.count > 0) return 'escalated';
+
+    if (sourceRoomId) {
+      const sourceUpdated = await this.db.missionInstance.updateMany({
+        where: {
+          id: instanceId,
+          status: 'ACTIVE',
+          alertLevel: newLevel,
+          ...(sameLevelSourcePolicy === 'fill'
+            ? { alertSourceRoomId: null }
+            : {
+                OR: [
+                  { alertSourceRoomId: null },
+                  { alertSourceRoomId: { not: sourceRoomId } },
+                ],
+              }),
+          ...sourceRoomFilter,
+        },
+        data: { alertSourceRoomId: sourceRoomId },
+      });
+      if (sourceUpdated.count > 0) return 'source-updated';
+    }
+
+    return 'unchanged';
+  }
+
+  async escalateAlertFromRoom(roomId: string, newLevel: string): Promise<InstanceAlertUpdateResult> {
+    if (newLevel !== 'YELLOW' && newLevel !== 'RED') return 'unchanged';
+
+    const instance = await this.findInstanceAlertForRoom(roomId);
+    if (!instance) return 'not-in-instance';
+    if (instance.status !== 'ACTIVE') return 'inactive-instance';
+
+    const currentPriority = ALERT_LEVELS.indexOf(instance.alertLevel as AlertLevel);
+    const requestedPriority = ALERT_LEVELS.indexOf(newLevel);
+    if (currentPriority > requestedPriority) return 'unchanged';
+    if (currentPriority === requestedPriority && instance.alertSourceRoomId === roomId) return 'unchanged';
+
+    return this.updateInstanceAlertLevel(instance.id, newLevel, roomId);
+  }
+
+  async ensureAlertFromRoom(roomId: string, newLevel: string): Promise<InstanceAlertUpdateResult> {
+    if (newLevel !== 'YELLOW' && newLevel !== 'RED') return 'unchanged';
+
+    const instance = await this.findInstanceAlertForRoom(roomId);
+    if (!instance) return 'not-in-instance';
+    if (instance.status !== 'ACTIVE') return 'inactive-instance';
+
+    const currentPriority = ALERT_LEVELS.indexOf(instance.alertLevel as AlertLevel);
+    const requestedPriority = ALERT_LEVELS.indexOf(newLevel);
+    if (currentPriority > requestedPriority) return 'unchanged';
+    if (currentPriority === requestedPriority && instance.alertSourceRoomId) return 'unchanged';
+
+    return this.writeInstanceAlertLevel(instance.id, newLevel, roomId, 'fill');
+  }
+
+  private async findInstanceAlertForRoom(roomId: string) {
+    const room = await this.db.room.findUnique({
+      where: { id: roomId },
+      select: {
+        missionInstance: {
+          select: { id: true, status: true, alertLevel: true, alertSourceRoomId: true },
+        },
+      },
+    });
+    return room?.missionInstance ?? null;
+  }
+
+  async findActiveInstanceAlertSources(): Promise<Array<{
+    instanceId: string;
+    roomId: string;
+    alarmState: 'YELLOW' | 'RED';
+  }>> {
+    const instances = await this.db.missionInstance.findMany({
+      where: {
+        status: 'ACTIVE',
+        alertLevel: { in: ['YELLOW', 'RED'] },
+        alertSourceRoomId: { not: null },
+      },
+      select: { id: true, alertLevel: true, alertSourceRoomId: true },
+    });
+
+    return instances.flatMap((instance) => {
+      if (!instance.alertSourceRoomId || (instance.alertLevel !== 'YELLOW' && instance.alertLevel !== 'RED')) {
+        return [];
+      }
+      return [{ instanceId: instance.id, roomId: instance.alertSourceRoomId, alarmState: instance.alertLevel }];
+    });
   }
 
   async findResolvedInstances() {

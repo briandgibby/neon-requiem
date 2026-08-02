@@ -23,6 +23,7 @@ import {
 import { PlayerEntityFactory } from '../../engine/ecs/factories/player-entity-factory';
 
 import { PlayerSyncCoordinator } from '../../engine/player-sync-coordinator';
+import { InstanceAlertAuthority } from '../mission/instance.repository';
 
 export class CombatService implements Tickable {
   readonly name = 'CombatService';
@@ -39,6 +40,7 @@ export class CombatService implements Tickable {
     private readonly ecsRegistry: EcsRegistry,
     private readonly moveDispatcher: MoveDispatcher,
     private readonly syncCoordinator: PlayerSyncCoordinator,
+    private readonly instanceAlerts?: InstanceAlertAuthority,
   ) {}
 
   async onTick(_tickCount: number): Promise<void> {
@@ -87,6 +89,14 @@ export class CombatService implements Tickable {
     session.alarmState = 'RED';
     session.backupCalled = true;
     session.turnsUntilReinforcements = 1;
+
+    if (this.instanceAlerts) {
+      try {
+        await this.instanceAlerts.escalateAlertFromRoom(roomId, 'RED');
+      } catch (_err) {
+        // AlertPatrolSystem retries non-GREEN CombatSessions on each tick.
+      }
+    }
 
     return { triggered: true };
   }

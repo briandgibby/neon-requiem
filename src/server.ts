@@ -149,6 +149,7 @@ async function bootstrap() {
     ecsRegistry,
     moveDispatcher,
     async (roomId, nodeEntityId) => missionService.wireNodeToMissionTargets(roomId, nodeEntityId),
+    instanceRepo,
   );
   registerMatrixRoutes(app, matrixService, authService);
 
@@ -167,7 +168,8 @@ async function bootstrap() {
     matrixService,
     ecsRegistry,
     moveDispatcher,
-    syncCoordinator
+    syncCoordinator,
+    instanceRepo,
   );
   registerCombatRoutes(app, combatService, authService);
 
@@ -188,7 +190,7 @@ async function bootstrap() {
   heartbeat.subscribe(new RegenSystem(ecsRegistry));
   heartbeat.subscribe(new CombatTickSystem(ecsRegistry));
   heartbeat.subscribe(new CombatReinforcementSystem(ecsRegistry, combatService, worldService));
-  heartbeat.subscribe(new AlertPatrolSystem(ecsRegistry, worldService, app.log));
+  heartbeat.subscribe(new AlertPatrolSystem(ecsRegistry, worldService, app.log, instanceRepo));
   heartbeat.subscribe(new MobAiSystem(ecsRegistry, moveDispatcher, worldService));
   heartbeat.subscribe(new MatrixTickSystem(ecsRegistry, matrixRepo, instanceRepo));
   heartbeat.subscribe(new IceAiSystem(ecsRegistry));

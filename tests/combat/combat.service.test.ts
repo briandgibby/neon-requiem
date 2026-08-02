@@ -13,6 +13,7 @@ describe('CombatService', () => {
   let mockMatrixService: any;
   let mockEcsRegistry: any;
   let mockMoveDispatcher: any;
+  let mockInstanceRepo: any;
 
   beforeEach(() => {
     mockCombatRepo = {
@@ -49,6 +50,9 @@ describe('CombatService', () => {
     mockMoveDispatcher = {
       dispatch: jest.fn(),
     };
+    mockInstanceRepo = {
+      escalateAlertFromRoom: jest.fn().mockResolvedValue('not-in-instance'),
+    };
     service = new CombatService(
       mockCombatRepo,
       mockCharRepo as any,
@@ -59,7 +63,8 @@ describe('CombatService', () => {
       mockMatrixService as any,
       mockEcsRegistry as any,
       mockMoveDispatcher as any,
-      { syncAllPlayers: jest.fn().mockResolvedValue(undefined) } as any
+      { syncAllPlayers: jest.fn().mockResolvedValue(undefined) } as any,
+      mockInstanceRepo as any,
     );
   });
 
@@ -172,6 +177,19 @@ describe('CombatService', () => {
       expect(session.alarmState).toBe('RED');
       expect(session.backupCalled).toBe(true);
       expect(session.turnsUntilReinforcements).toBe(1);
+    });
+
+    it('escalates the owning MissionInstance from the physical alert room', async () => {
+      const session = {
+        roomId: 'room_1', securityRating: 'A', alarmState: 'GREEN',
+        turnsUntilReinforcements: null, backupCalled: false, tick: 0,
+      };
+      mockEcsRegistry.getEntityByComponent.mockReturnValue('session-1');
+      mockEcsRegistry.getComponent.mockReturnValue(session);
+
+      await service.triggerSecurityAlarm('room_1');
+
+      expect(mockInstanceRepo.escalateAlertFromRoom).toHaveBeenCalledWith('room_1', 'RED');
     });
   });
 
