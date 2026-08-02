@@ -182,6 +182,7 @@ model Room {
   safeZoneOverrideActive Boolean @default(false)
   missionInstanceId      String?
   missionInstance        MissionInstance? @relation(fields: [missionInstanceId], references: [id], onDelete: SetNull)
+  patrolStarts           PatrolDefinition[]
 
   @@map("rooms")
 }
@@ -236,8 +237,25 @@ model MobTemplate {
   updatedAt         DateTime @updatedAt
   eliteOnly     Boolean @default(false)
   corporationId String?
+  patrolDefinitions PatrolDefinition[]
 
   @@map("mob_templates")
+}
+
+model PatrolDefinition {
+  id             String      @id @default(cuid())
+  slug           String      @unique
+  mobTemplateId  String
+  mobTemplate    MobTemplate @relation(fields: [mobTemplateId], references: [id], onDelete: Cascade)
+  startRoomId    String
+  startRoom      Room        @relation(fields: [startRoomId], references: [id], onDelete: Cascade)
+  routeRoomSlugs Json
+  enabled        Boolean     @default(true)
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+
+  @@index([enabled])
+  @@map("patrol_definitions")
 }
 
 model MatrixNode {

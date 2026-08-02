@@ -974,6 +974,25 @@ async function main() {
     }
   });
 
+  console.log('Seeding patrol definitions...');
+
+  await prisma.patrolDefinition.upsert({
+    where: { slug: 'arcology-security-sweep' },
+    update: {
+      enabled: true,
+      routeRoomSlugs: ['corp-executive-offices', STARTING_ROOM_CORP, 'corp-transit-hub'],
+      mobTemplate: { connect: { slug: 'security-guard' } },
+      startRoom: { connect: { slug: 'corp-executive-offices' } },
+    },
+    create: {
+      slug: 'arcology-security-sweep',
+      enabled: true,
+      routeRoomSlugs: ['corp-executive-offices', STARTING_ROOM_CORP, 'corp-transit-hub'],
+      mobTemplate: { connect: { slug: 'security-guard' } },
+      startRoom: { connect: { slug: 'corp-executive-offices' } },
+    },
+  });
+
   console.log('Seeding Shop Inventories...');
 
   const blackMarket = await prisma.room.findUnique({ where: { slug: 'shadow-black-market' } });

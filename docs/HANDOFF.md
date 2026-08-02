@@ -365,8 +365,7 @@ The project has moved from a shallow procedural model to a **Deep Module** archi
      - Patrols do not start in or cross effective safe-zone rooms.
      - Patrols become `hostile` after reaching an alerted room so `MobAiSystem` can handle attacks.
      - Room and safe-zone lookup failures are reported through diagnostics while the affected patrol is isolated from the rest of the heartbeat.
-   - Deferred follow-ons:
-     - Persisted patrol definitions in world content.
+   - Follow-on completed 2026-08-02: authored patrol definitions now persist in World data and materialize into ECS during startup.
 
 21. **Redmond Barrens World Content (COMPLETE, 2026-08-02):**
    - Added a connected 10-room `Z`-security Redmond Barrens zone.
@@ -418,14 +417,20 @@ The project has moved from a shallow procedural model to a **Deep Module** archi
    - Hostile NPC attacks, body-guard interceptions, pursuit departures/arrivals, and alert-patrol departures/arrivals now publish only to affected physical rooms.
    - Combat actions use the existing terminal `combat` style; movement uses `info`. Publisher failures are isolated from ECS state changes and covered by focused regression tests.
 
+27. **Persisted Patrol Definitions (COMPLETE, 2026-08-02):**
+   - Added `PatrolDefinition` World data linking a stable slug to a mob template, start room, ordered route slugs, and an enabled flag.
+   - `PatrolBootstrap` resolves route slugs to ECS room IDs before the heartbeat starts and materializes patrol-state mobs through the existing `MobFactory`.
+   - Startup rejects malformed, repeated-room, non-adjacent, effective-safe-zone, and MissionInstance-scoped routes independently; in-flight reservations and definition components prevent duplicate patrols across overlapping or repeated loads.
+   - Seeded `arcology-security-sweep` across the Executive Office Wing, Arcology Main Plaza, and Corporate Transit Hub. Repeated seeding leaves one definition, and live loading creates one patrol with no warnings.
+   - Migration `20260802140000_patrol_definitions` is applied locally; focused tests, the full backend suite, and both production builds pass.
+
 ---
 
 ## 4. Immediate Next Steps (Phase 4.4+)
 
 **Phase 4.4A through 4.4E and the Redmond Barrens content slice are complete locally.**
 
-1. Remaining Phase 4.4 follow-ons:
-   - Persisted patrol definitions in world content
+There are no remaining Phase 4.4 follow-ons in the tracked implementation plans.
 
 **Remaining carry-forward items:**
 - Snapshot history/admin tooling — no admin-facing snapshot history view yet

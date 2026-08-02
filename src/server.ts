@@ -52,6 +52,8 @@ import { CharacterService } from './domains/character/character.service';
 import { registerCharacterRoutes } from './domains/character/character.routes';
 import { WorldRepository } from './domains/world/world.repository';
 import { WorldService } from './domains/world/world.service';
+import { PatrolDefinitionRepository } from './domains/world/patrol-definition.repository';
+import { PatrolBootstrap } from './engine/patrol-bootstrap';
 import { registerWorldRoutes } from './domains/world/world.routes';
 import { CombatRepository } from './domains/combat/combat.repository';
 import { MobRepository } from './domains/combat/mob.repository';
@@ -184,6 +186,9 @@ async function bootstrap() {
   const shopRepo = new ShopRepository(db);
   const shopService = new ShopService(shopRepo, worldRepo, charRepo);
   registerShopRoutes(app, shopService, authService);
+
+  const patrolDefinitions = new PatrolDefinitionRepository(db);
+  await new PatrolBootstrap(ecsRegistry, patrolDefinitions, worldService, app.log).load();
 
   const socketHub = new SocketHub(app.server, authService, roomPresence, syncCoordinator);
   const roomEvents: RoomEventPublisher = {

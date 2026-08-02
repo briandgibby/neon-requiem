@@ -20,6 +20,7 @@ export enum ComponentTypes {
   Decker = 'decker',
   MissionTarget = 'mission_target',
   CharacterClass = 'character_class',
+  PatrolDefinition = 'patrol_definition',
 }
 
 export interface IdentityComponent {
@@ -101,6 +102,10 @@ export interface AiComponent {
   state: 'idle' | 'hostile' | 'patrol';
   targetEntityId?: string;
   patrolRoute?: string[];
+}
+
+export interface PatrolDefinitionComponent {
+  definitionId: string;
 }
 
 export interface MatrixNodeComponent {

@@ -43,7 +43,6 @@ Implemented:
 Deferred:
 
 - Weighted or randomized patrol-route selection.
-- Persisted patrol definitions in world content.
 
 Follow-on completed (2026-08-02):
 
@@ -52,6 +51,7 @@ Follow-on completed (2026-08-02):
 - Reconciled active MissionInstance alert authority back into all linked persisted matrix nodes without mission auto-decay, including nodes not yet materialized in ECS.
 - Fed scoped persisted sources into `AlertPatrolSystem` alongside ECS combat sessions, with fill-only retry semantics and inactive-instance suppression.
 - Published patrol departures and arrivals to the affected physical rooms through the shared room-event port.
+- Persisted authored patrol definitions by stable room slug and materialized validated, idempotent patrol-state mobs during server startup.
 
 ---
 
@@ -66,3 +66,6 @@ Follow-on completed (2026-08-02):
 - [x] RED alerts beyond the bounded eight-transition patrol search range are ignored for immediate movement.
 - [x] Lookup failures are reported without stopping other patrols.
 - [x] Patrols become hostile after reaching an alerted room.
+- [x] Enabled persisted patrol definitions materialize once with resolved room-id routes.
+- [x] Invalid, repeated-room, non-adjacent, safe-zone, and MissionInstance-scoped persisted routes are isolated.
+- [x] Repeated and overlapping startup loads do not duplicate a materialized patrol.
