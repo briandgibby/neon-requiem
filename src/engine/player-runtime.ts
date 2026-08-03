@@ -5,6 +5,8 @@ import {
   ComponentTypes,
   PlayerIdComponent,
   PositionComponent,
+  HealthComponent,
+  ManaComponent,
 } from './ecs/components';
 import { PlayerCharacterData, PlayerEntityFactory } from './ecs/factories/player-entity-factory';
 import { EcsRegistry, EntityId } from './ecs/registry';
@@ -58,5 +60,19 @@ export class PlayerRuntime {
     if (!entityId) return;
     const position = this.registry.getComponent<PositionComponent>(entityId, ComponentTypes.Position);
     if (position) position.roomId = roomId;
+  }
+
+  updateVitals(characterId: string, vitals: { currentHp?: number; currentMana?: number }): void {
+    const entityId = this.registry.getEntityByComponent<PlayerIdComponent>(
+      ComponentTypes.PlayerId,
+      (player) => player.characterId === characterId,
+    );
+    if (!entityId) return;
+
+    const health = this.registry.getComponent<HealthComponent>(entityId, ComponentTypes.Health);
+    if (health && vitals.currentHp !== undefined) health.current = vitals.currentHp;
+
+    const mana = this.registry.getComponent<ManaComponent>(entityId, ComponentTypes.Mana);
+    if (mana && vitals.currentMana !== undefined) mana.current = vitals.currentMana;
   }
 }

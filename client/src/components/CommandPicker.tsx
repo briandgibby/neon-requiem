@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { HotkeyMap } from '../lib/hotkeys';
 import { composePickerCommand } from '../lib/command-picker';
 import type { CommandArgumentSource, CommandArgumentSuggestionSource } from '../lib/command-picker';
@@ -27,6 +27,7 @@ interface CommandPickerProps {
   argumentSuggestions?: Partial<Record<CommandArgumentSuggestionSource, CommandArgumentOption[]>>;
   isMatrixMode?: boolean;
   onCommand: (command: string) => void;
+  onArgumentSourceSelected?: (source: CommandArgumentSource) => void;
   onSaveHotkey: (trigger: string, command: string) => Promise<boolean>;
   onRemoveHotkey: (trigger: string) => Promise<boolean>;
   isSavingHotkey?: boolean;
@@ -39,6 +40,7 @@ export function CommandPicker({
   argumentSuggestions = {},
   isMatrixMode = false,
   onCommand,
+  onArgumentSourceSelected,
   onSaveHotkey,
   onRemoveHotkey,
   isSavingHotkey = false,
@@ -71,6 +73,12 @@ export function CommandPicker({
   const availableSuggestions = selectedCommand?.argumentSuggestionSource
     ? argumentSuggestions[selectedCommand.argumentSuggestionSource] ?? []
     : [];
+
+  useEffect(() => {
+    if (selectedCommand?.argumentSource) {
+      onArgumentSourceSelected?.(selectedCommand.argumentSource);
+    }
+  }, [onArgumentSourceSelected, selectedCommand?.argumentSource]);
 
   const composeCommand = (command: CommandMetadata, commandArgs = '') => {
     return composePickerCommand(command, commandArgs, selectedArgumentValue);

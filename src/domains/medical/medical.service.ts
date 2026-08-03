@@ -1,47 +1,234 @@
 import { MedicalRepository } from './medical.repository';
 import { NotFoundError, ValidationError } from '../../shared/errors';
-import { MedicalHealResult, ReviveResult, InterrogationResult } from './medical.types';
+import {
+  FieldTreatmentInput,
+  FieldTreatmentResult,
+  InterrogationResult,
+  MedicalHealResult,
+  ReviveResult,
+  TreatmentCommitInput,
+  TreatmentCommitResult,
+} from './medical.types';
+import { EcsRegistry } from '../../engine/ecs/registry';
+import {
+  ComponentTypes,
+  DeckerComponent,
+  HealthComponent,
+  PlayerIdComponent,
+  PositionComponent,
+} from '../../engine/ecs/components';
+import { PlayerRuntime } from '../../engine/player-runtime';
+import { z } from 'zod';
+
+const fieldTreatmentSchema = z.object({
+  doctorId: z.string().min(1),
+  accountId: z.string().min(1),
+  targetEntityId: z.string().min(1),
+  roomId: z.string().min(1),
+});
+const legacyHealSchema = z.object({
+  doctorId: z.string().min(1),
+  targetId: z.string().min(1),
+});
+
+const MANA_COST = 20;
+const MEDICAL_SUPPLIES_SLUG = 'medical-supplies';
 
 export class MedicalService {
-  constructor(private readonly medicalRepo: MedicalRepository) {}
+  private readonly treatmentTails = new Map<string, Promise<void>>();
 
-  async healHp(docId: string, targetId: string): Promise<MedicalHealResult> {
-    const doc = await this.medicalRepo.findCharacterById(docId);
-    if (!doc) throw new NotFoundError('Doctor');
+  constructor(
+    private readonly medicalRepo: MedicalRepository,
+    private readonly registry: EcsRegistry,
+    private readonly playerRuntime: PlayerRuntime,
+  ) {}
 
-    const target = await this.medicalRepo.findCharacterById(targetId);
-    if (!target) throw new NotFoundError('Target');
+  async treat(input: FieldTreatmentInput): Promise<FieldTreatmentResult> {
+    const parsedInput = fieldTreatmentSchema.parse(input);
+    return this.withTargetTreatmentLock(
+      parsedInput.targetEntityId,
+      () => this.treatLocked(parsedInput),
+    );
+  }
 
-    let hpRestored = 0;
-    let resourceSpent = '';
+  private async treatLocked(parsedInput: FieldTreatmentInput): Promise<FieldTreatmentResult> {
+    const doctorEntityId = this.registry.getEntityByComponent<PlayerIdComponent>(
+      ComponentTypes.PlayerId,
+      (player) => (
+        player.characterId === parsedInput.doctorId
+        && player.accountId === parsedInput.accountId
+      ),
+    );
+    if (!doctorEntityId) throw new NotFoundError('Doctor');
 
-    if (doc.streetDocPath === 'magic') {
-      // Magic Path: Uses Mana
-      const manaCost = 20;
-      if (doc.currentMana < manaCost) throw new ValidationError('Insufficient Mana');
-      
-      hpRestored = doc.magic ? (doc.magic * 5) + 10 : 10;
-      await this.medicalRepo.updateCharacterVitals(docId, { currentMana: doc.currentMana - manaCost });
-      resourceSpent = 'MANA';
+    const doctorPosition = this.registry.getComponent<PositionComponent>(doctorEntityId, ComponentTypes.Position);
+    const targetPlayer = this.registry.getComponent<PlayerIdComponent>(parsedInput.targetEntityId, ComponentTypes.PlayerId);
+    const targetPosition = this.registry.getComponent<PositionComponent>(parsedInput.targetEntityId, ComponentTypes.Position);
+    const targetHealth = this.registry.getComponent<HealthComponent>(parsedInput.targetEntityId, ComponentTypes.Health);
+    if (!targetPlayer || !targetPosition || !targetHealth) throw new NotFoundError('Target');
+    this.assertEligibleLiveTarget(
+      parsedInput,
+      doctorEntityId,
+      doctorPosition,
+      targetPlayer,
+      targetPosition,
+      targetHealth,
+    );
+
+    const [doctor, persistedTarget] = await Promise.all([
+      this.medicalRepo.findTreatmentActor(parsedInput.doctorId, parsedInput.accountId),
+      this.medicalRepo.findTreatmentTarget(targetPlayer.characterId),
+    ]);
+    if (!doctor) throw new NotFoundError('Doctor');
+    if (!persistedTarget) throw new NotFoundError('Target');
+    if (doctor.className !== 'street-doc') {
+      throw new ValidationError('Only a Street Doc can perform field treatment');
+    }
+    if (doctor.currentRoomId !== parsedInput.roomId) {
+      throw new ValidationError('Doctor is no longer in the treatment room');
+    }
+    this.assertEligibleLiveTarget(
+      parsedInput,
+      doctorEntityId,
+      doctorPosition,
+      targetPlayer,
+      targetPosition,
+      targetHealth,
+    );
+    let healPower: number;
+    let resource: TreatmentCommitInput['resource'];
+    if (doctor.streetDocPath === 'magic') {
+      if (doctor.currentMana < MANA_COST) throw new ValidationError('Insufficient Mana');
+      healPower = (doctor.magic ?? 0) * 5 + 10;
+      resource = { type: 'mana', amount: MANA_COST };
+    } else if (doctor.streetDocPath === 'tech') {
+      const supplies = doctor.inventory.find((entry) => entry.item.slug === MEDICAL_SUPPLIES_SLUG);
+      if (!supplies || supplies.quantity < 1) {
+        throw new ValidationError('Insufficient Medical Supplies');
+      }
+      healPower = doctor.logic * 4 + 15;
+      resource = { type: 'inventory', inventoryItemId: supplies.id, quantity: 1 };
     } else {
-      // Tech Path: Uses Supplies
-      const supplyEntry = doc.inventory.find(i => i.item.slug === 'medical-supplies');
-      if (!supplyEntry || supplyEntry.quantity < 1) throw new ValidationError('Insufficient Medical Supplies');
-      
-      hpRestored = doc.logic ? (doc.logic * 4) + 15 : 15;
-      await this.medicalRepo.consumeInventoryItem(supplyEntry.id, 1);
-      resourceSpent = 'SUPPLIES';
+      throw new ValidationError('Street Doc treatment path must be magic or tech');
     }
 
-    const newHp = Math.min(target.maxHp, target.currentHp + hpRestored);
-    await this.medicalRepo.updateCharacterVitals(targetId, { currentHp: newHp });
+    const targetNextHp = Math.min(targetHealth.max, targetHealth.current + healPower);
+    const hpRestored = targetNextHp - targetHealth.current;
+    targetHealth.current = targetNextHp;
+    let committed: TreatmentCommitResult;
+    try {
+      committed = await this.medicalRepo.commitTreatment({
+        doctorId: parsedInput.doctorId,
+        accountId: parsedInput.accountId,
+        targetCharacterId: targetPlayer.characterId,
+        roomId: parsedInput.roomId,
+        expectedCurrentHp: persistedTarget.currentHp,
+        targetNextHp,
+        hpRestored,
+        resource,
+      });
+    } catch (error) {
+      targetHealth.current = Math.max(0, targetHealth.current - hpRestored);
+      throw error;
+    }
+    if (resource.type === 'mana') {
+      const liveMana = this.registry.getComponent<{ current: number }>(doctorEntityId, ComponentTypes.Mana);
+      this.playerRuntime.updateVitals(parsedInput.doctorId, {
+        currentMana: Math.min(liveMana?.current ?? committed.actorCurrentMana, committed.actorCurrentMana),
+      });
+    }
+    return {
+      targetCharacterId: targetPlayer.characterId,
+      targetName: committed.targetName,
+      targetCurrentHp: targetHealth.current,
+      targetMaxHp: targetHealth.max,
+      actorCurrentMana: committed.actorCurrentMana,
+      resourceSpent: resource.type === 'mana' ? 'MANA' : 'SUPPLIES',
+      hpRestored,
+    };
+  }
 
+  private async withTargetTreatmentLock<T>(targetEntityId: string, action: () => Promise<T>): Promise<T> {
+    const previous = this.treatmentTails.get(targetEntityId) ?? Promise.resolve();
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const tail = previous.then(() => gate);
+    this.treatmentTails.set(targetEntityId, tail);
+
+    await previous;
+    try {
+      return await action();
+    } finally {
+      release();
+      if (this.treatmentTails.get(targetEntityId) === tail) {
+        this.treatmentTails.delete(targetEntityId);
+      }
+    }
+  }
+
+  private getPhysicalRoomId(entityId: string, position?: PositionComponent): string | undefined {
+    const decker = this.registry.getComponent<DeckerComponent>(entityId, ComponentTypes.Decker);
+    return decker?.physicalRoomId || position?.roomId;
+  }
+
+  private assertEligibleLiveTarget(
+    input: FieldTreatmentInput,
+    doctorEntityId: string,
+    doctorPosition: PositionComponent | undefined,
+    targetPlayer: PlayerIdComponent,
+    targetPosition: PositionComponent,
+    targetHealth: HealthComponent,
+  ): void {
+    if (targetPlayer.characterId === input.doctorId) {
+      throw new ValidationError('A Street Doc cannot treat themself');
+    }
+    if (
+      this.getPhysicalRoomId(doctorEntityId, doctorPosition) !== input.roomId
+      || this.getPhysicalRoomId(input.targetEntityId, targetPosition) !== input.roomId
+    ) {
+      throw new ValidationError('Doctor and target must be in the same room');
+    }
+    if (targetHealth.current <= 0) {
+      throw new ValidationError('Field treatment cannot revive an incapacitated target');
+    }
+    if (targetHealth.current >= targetHealth.max) {
+      throw new ValidationError('Target is already at full health');
+    }
+  }
+
+  /** @deprecated Use treat with the authenticated account and runtime entity selector. */
+  async healHp(docId: string, targetId: string): Promise<MedicalHealResult> {
+    const input = legacyHealSchema.parse({ doctorId: docId, targetId });
+    const doctorEntityId = this.registry.getEntityByComponent<PlayerIdComponent>(
+      ComponentTypes.PlayerId,
+      (player) => player.characterId === input.doctorId,
+    );
+    const targetEntityId = this.registry.getEntityByComponent<PlayerIdComponent>(
+      ComponentTypes.PlayerId,
+      (player) => player.characterId === input.targetId,
+    );
+    if (!doctorEntityId) throw new NotFoundError('Doctor');
+    if (!targetEntityId) throw new NotFoundError('Target');
+
+    const doctor = this.registry.getComponent<PlayerIdComponent>(doctorEntityId, ComponentTypes.PlayerId)!;
+    const position = this.registry.getComponent<PositionComponent>(doctorEntityId, ComponentTypes.Position);
+    const roomId = this.getPhysicalRoomId(doctorEntityId, position);
+    if (!roomId) throw new ValidationError('Doctor is not currently in any room');
+
+    const result = await this.treat({
+      doctorId: input.doctorId,
+      accountId: doctor.accountId,
+      targetEntityId,
+      roomId,
+    });
     return {
       success: true,
-      message: `Healed ${target.name} for ${hpRestored} HP using ${resourceSpent}.`,
-      hpRestored,
+      message: `Healed ${result.targetName} for ${result.hpRestored} HP using ${result.resourceSpent}.`,
+      hpRestored: result.hpRestored,
       stunRestored: 0,
-      resourceSpent
+      resourceSpent: result.resourceSpent,
     };
   }
 

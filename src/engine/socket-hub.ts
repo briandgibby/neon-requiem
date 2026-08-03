@@ -207,9 +207,11 @@ export class SocketHub {
     return this.presence.getSocketForCharacter(characterName);
   }
 
-  findCharacterById(characterId: string): { socketId: string; name: string } | null {
+  findCharacterById(characterId: string): { socketId: string; name: string; roomId: string } | null {
     const client = this.presence.getClientByCharacterId(characterId);
-    return client ? { socketId: client.socketId, name: client.characterName } : null;
+    return client
+      ? { socketId: client.socketId, name: client.characterName, roomId: client.roomId }
+      : null;
   }
 
   private emitRoomOccupants(roomId: string): void {
