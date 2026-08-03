@@ -72,6 +72,7 @@ describe('CombatService', () => {
     id: 'char_1',
     accountId: 'acc_1',
     name: 'Kira',
+    currentRoomId: 'room_1',
     currentHp: 100,
     maxHp: 100,
     currentStun: 100,
@@ -98,6 +99,14 @@ describe('CombatService', () => {
   };
 
   describe('joinCombat', () => {
+    it('rejects a room that does not match the owned Character location', async () => {
+      mockCharRepo.findByIdAndAccount.mockResolvedValue(mockCharacter);
+
+      await expect(service.joinCombat('char_1', 'acc_1', 'other-room'))
+        .rejects.toThrow('Character is not in that room');
+      expect(mockEcsRegistry.createEntity).not.toHaveBeenCalled();
+    });
+
     it('creates a new player entity in ECS if none exists', async () => {
       mockCharRepo.findByIdAndAccount.mockResolvedValue(mockCharacter);
       mockEcsRegistry.getEntityByComponent.mockReturnValue(undefined); // Entity not in ECS

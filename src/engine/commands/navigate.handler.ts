@@ -2,8 +2,7 @@ import { CommandContext, CommandHandler } from '../command-registry';
 import { WorldService } from '../../domains/world/world.service';
 import { SocketHub } from '../socket-hub';
 import { InstanceRepository } from '../../domains/mission/instance.repository';
-import { EcsRegistry } from '../ecs/registry';
-import { ComponentTypes, PlayerIdComponent, PositionComponent } from '../ecs/components';
+import { PlayerRuntime } from '../player-runtime';
 
 export class NavigateHandler implements CommandHandler {
   readonly aliases = ['navigate'] as const;
@@ -17,7 +16,7 @@ export class NavigateHandler implements CommandHandler {
     private readonly worldService: WorldService,
     private readonly socketHub: SocketHub,
     private readonly instanceRepo: InstanceRepository,
-    private readonly ecsRegistry: EcsRegistry,
+    private readonly playerRuntime: PlayerRuntime,
   ) {}
 
   async execute(context: CommandContext): Promise<void> {
@@ -34,7 +33,7 @@ export class NavigateHandler implements CommandHandler {
     for (const result of results) {
       if (result.success && result.room) {
         const room = result.room as any;
-        this.syncEcsPosition(characterId, room.id);
+        this.playerRuntime.moveCharacter(characterId, room.id);
         room.occupants = this.socketHub.getRoomOccupants(room.id).filter((o) => o.characterId !== characterId);
         output.emit('room_data', room);
         await this.activateInstanceIfNeeded(result.room);
@@ -64,14 +63,4 @@ export class NavigateHandler implements CommandHandler {
     }
   }
 
-  private syncEcsPosition(characterId: string, roomId: string): void {
-    const entityId = this.ecsRegistry.getEntityByComponent<PlayerIdComponent>(
-      ComponentTypes.PlayerId,
-      (player) => player.characterId === characterId,
-    );
-    if (!entityId) return;
-
-    const position = this.ecsRegistry.getComponent<PositionComponent>(entityId, ComponentTypes.Position);
-    if (position) position.roomId = roomId;
-  }
 }

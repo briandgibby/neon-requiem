@@ -52,6 +52,18 @@ export class InstanceRepository {
       });
       rooms.push(room);
     }
+
+    for (let i = 0; i < rooms.length; i++) {
+      const exits: Record<string, string> = {
+        ...(i > 0 ? { west: rooms[i - 1].slug } : {}),
+        ...(i < rooms.length - 1 ? { east: rooms[i + 1].slug } : {}),
+      };
+      await this.db.room.update({
+        where: { id: rooms[i].id },
+        data: { exits },
+      });
+      rooms[i] = { ...rooms[i], exits };
+    }
     return rooms;
   }
 

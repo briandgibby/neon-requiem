@@ -27,6 +27,7 @@ import { MatrixDataSpikeExecutor } from './engine/ecs/combat/moves/matrix-data-s
 import { SecurityPatrol } from './engine/security-patrol';
 import { RoomPresence } from './engine/room-presence';
 import { PlayerSyncCoordinator } from './engine/player-sync-coordinator';
+import { PlayerRuntime } from './engine/player-runtime';
 import { SocketHub } from './engine/socket-hub';
 import { RoomEventPublisher } from './engine/room-event-publisher';
 import { CommandDispatcher } from './engine/command-dispatcher';
@@ -44,6 +45,16 @@ import { JackOutHandler } from './engine/commands/jackout.handler';
 import { BruteHandler } from './engine/commands/brute.handler';
 import { SleazeHandler } from './engine/commands/sleaze.handler';
 import { DataSpikeHandler } from './engine/commands/spike.handler';
+import { AttackHandler } from './engine/commands/attack.handler';
+import { GuardHandler as GuardCommandHandler } from './engine/commands/guard.handler';
+import {
+  AcceptMissionHandler,
+  DeployMissionHandler,
+  ExfilMissionHandler,
+  MissionListHandler,
+  MissionStatusHandler,
+} from './engine/commands/mission.handlers';
+import { BuyItemHandler, ShopListHandler } from './engine/commands/shop.handlers';
 import { AuthRepository } from './domains/auth/auth.repository';
 import { AuthService } from './domains/auth/auth.service';
 import { registerAuthRoutes } from './domains/auth/auth.routes';
@@ -124,6 +135,7 @@ async function bootstrap() {
   // Shared Engine Services
   const roomPresence = new RoomPresence();
   const ecsRegistry = new EcsRegistry();
+  const playerRuntime = new PlayerRuntime(ecsRegistry);
   const syncCoordinator = new PlayerSyncCoordinator(db, ecsRegistry, new AuditLogger(db));
   const heartbeat = new Heartbeat(TICK_RATE_MS);
 
@@ -161,6 +173,7 @@ async function bootstrap() {
     moveDispatcher,
     async (roomId, nodeEntityId) => missionService.wireNodeToMissionTargets(roomId, nodeEntityId),
     instanceAlerts,
+    playerRuntime,
   );
   registerMatrixRoutes(app, matrixService, authService);
 
@@ -181,6 +194,7 @@ async function bootstrap() {
     moveDispatcher,
     syncCoordinator,
     instanceAlerts,
+    playerRuntime,
   );
   registerCombatRoutes(app, combatService, authService);
 
@@ -192,7 +206,7 @@ async function bootstrap() {
   registerMissionRoutes(app, missionService, authService);
 
   const shopRepo = new ShopRepository(db);
-  const shopService = new ShopService(shopRepo, worldRepo, charRepo);
+  const shopService = new ShopService(shopRepo, worldRepo);
   registerShopRoutes(app, shopService, authService);
 
   const patrolDefinitions = new PatrolDefinitionRepository(db);
@@ -218,8 +232,8 @@ async function bootstrap() {
   heartbeat.subscribe(new InstanceCleanupSystem(ecsRegistry, instanceRepo));
 
   const commandRegistry = new CommandRegistry();
-  commandRegistry.register(new MoveHandler(worldService, socketHub, instanceRepo, ecsRegistry));
-  commandRegistry.register(new NavigateHandler(worldService, socketHub, instanceRepo, ecsRegistry));
+  commandRegistry.register(new MoveHandler(worldService, socketHub, instanceRepo, playerRuntime));
+  commandRegistry.register(new NavigateHandler(worldService, socketHub, instanceRepo, playerRuntime));
   commandRegistry.register(new LookHandler(worldService, matrixService, socketHub));
   commandRegistry.register(new WhoHandler(socketHub));
   commandRegistry.register(new SayHandler(socketHub));
@@ -229,6 +243,15 @@ async function bootstrap() {
   commandRegistry.register(new BruteHandler(matrixService));
   commandRegistry.register(new SleazeHandler(matrixService));
   commandRegistry.register(new DataSpikeHandler(matrixService));
+  commandRegistry.register(new AttackHandler(combatService));
+  commandRegistry.register(new GuardCommandHandler(combatService));
+  commandRegistry.register(new MissionListHandler(missionService));
+  commandRegistry.register(new AcceptMissionHandler(missionService));
+  commandRegistry.register(new MissionStatusHandler(missionService));
+  commandRegistry.register(new DeployMissionHandler(missionService, worldService, socketHub, playerRuntime));
+  commandRegistry.register(new ExfilMissionHandler(missionService, worldService, socketHub, playerRuntime));
+  commandRegistry.register(new ShopListHandler(shopService));
+  commandRegistry.register(new BuyItemHandler(shopService));
   commandRegistry.register(new HelpHandler(commandRegistry));
   registerCommandRoutes(app, commandRegistry, authService);
 
@@ -260,6 +283,7 @@ async function bootstrap() {
             if (signal.aborted) return;
             pois = await worldService.getPOIs(room.zoneId);
             if (signal.aborted) return;
+            playerRuntime.loadCharacter(character, room.id);
           }
 
           const activeNode = await matrixService.restoreSession(character.id, accountId, signal);

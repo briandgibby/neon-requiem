@@ -43,6 +43,50 @@ export interface AcceptMissionInput {
   partyId?: string;
 }
 
+export interface MissionTemplateSummary {
+  slug: string;
+  name: string;
+  description: string;
+  type: string;
+  baseDifficulty: number;
+  basePayout: number;
+}
+
+export interface ActiveMissionSummary {
+  missionId: string;
+  name: string;
+  status: string;
+  instanceStatus: string | null;
+  alertLevel: string;
+  payout: number;
+  objectives: Pick<MissionObjective, 'description' | 'isMandatory' | 'isCompleted'>[];
+}
+
+export interface MissionDeploymentResult {
+  missionId: string;
+  room: { id: string; name: string; zoneId: string };
+}
+
+export interface MissionExfilCandidate {
+  missionId: string;
+}
+
+export interface AcceptMissionResult {
+  success: boolean;
+  message: string;
+  missionId: string;
+  seed: string;
+}
+
+export interface MissionCompletionResult {
+  success: boolean;
+  message: string;
+  payout: number;
+  nuyenTotal: number;
+  alreadyCompleted: boolean;
+  extractionRoom: { id: string; name: string; zoneId: string };
+}
+
 export interface MissionExfilResult {
   success: boolean;
   message: string;

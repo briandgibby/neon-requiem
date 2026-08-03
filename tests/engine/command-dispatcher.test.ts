@@ -15,6 +15,7 @@ import { SleazeHandler } from '../../src/engine/commands/sleaze.handler';
 import { DataSpikeHandler } from '../../src/engine/commands/spike.handler';
 import { NavigateHandler } from '../../src/engine/commands/navigate.handler';
 import { encodeCharacterSelector } from '../../src/shared/character-selector';
+import { PlayerRuntime } from '../../src/engine/player-runtime';
 
 function buildMocks() {
   const worldService = {
@@ -45,20 +46,21 @@ function buildMocks() {
     updateInstanceStatus: jest.fn().mockResolvedValue(undefined),
   };
   const ecsRegistry = new EcsRegistry();
+  const playerRuntime = new PlayerRuntime(ecsRegistry);
   const output: CommandOutput = {
     emit: jest.fn(),
     data: { characterId: 'char-1', accountId: 'acc-1' },
   };
-  return { worldService, socketHub, matrixService, instanceRepo, ecsRegistry, output };
+  return { worldService, socketHub, matrixService, instanceRepo, ecsRegistry, playerRuntime, output };
 }
 
 function buildDispatcher(overrides: Partial<ReturnType<typeof buildMocks>> = {}) {
   const mocks = { ...buildMocks(), ...overrides };
-  const { worldService, socketHub, matrixService, instanceRepo, ecsRegistry } = mocks;
+  const { worldService, socketHub, matrixService, instanceRepo, ecsRegistry, playerRuntime } = mocks;
 
   const registry = new CommandRegistry();
-  registry.register(new MoveHandler(worldService as any, socketHub as any, instanceRepo as any, ecsRegistry));
-  registry.register(new NavigateHandler(worldService as any, socketHub as any, instanceRepo as any, ecsRegistry));
+  registry.register(new MoveHandler(worldService as any, socketHub as any, instanceRepo as any, playerRuntime));
+  registry.register(new NavigateHandler(worldService as any, socketHub as any, instanceRepo as any, playerRuntime));
   registry.register(new LookHandler(worldService as any, matrixService as any, socketHub as any));
   registry.register(new WhoHandler(socketHub as any));
   registry.register(new SayHandler(socketHub as any));
