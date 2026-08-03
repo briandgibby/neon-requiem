@@ -25,7 +25,7 @@ export class AuthService {
     });
 
     const token = this.jwt.sign({ accountId: account.id, username: account.username });
-    return { token, accountId: account.id, username: account.username };
+    return { token, accountId: account.id, username: account.username, isAdmin: account.isAdmin };
   }
 
   async login(input: LoginInput): Promise<LoginResult> {
@@ -40,7 +40,7 @@ export class AuthService {
     if (!account || !valid) throw new UnauthorizedError('Invalid username or password');
 
     const token = this.jwt.sign({ accountId: account.id, username: account.username });
-    return { token, accountId: account.id, username: account.username };
+    return { token, accountId: account.id, username: account.username, isAdmin: account.isAdmin };
   }
 
   verifyToken(token: string): import('../../shared/types').AuthPayload {

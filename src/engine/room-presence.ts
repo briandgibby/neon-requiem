@@ -1,8 +1,10 @@
 import { EventEmitter } from 'events';
+import { encodeCharacterSelector } from '../shared/character-selector';
 
 export interface RoomOccupant {
   characterId: string;
   name: string;
+  selector: string;
 }
 
 export interface PresenceLeaveResult {
@@ -105,6 +107,11 @@ export class RoomPresence extends EventEmitter {
     return this.clientsBySocket.get(socketId) ?? null;
   }
 
+  getClientByCharacterId(characterId: string): PresenceClient | null {
+    const socketId = this.socketIdByCharacter.get(characterId);
+    return socketId ? this.getClient(socketId) : null;
+  }
+
   getRoomOccupants(roomId: string): RoomOccupant[] {
     return [...this.clientsBySocket.values()]
       .filter((client) => client.roomId === roomId)
@@ -112,6 +119,7 @@ export class RoomPresence extends EventEmitter {
       .map((client) => ({
         characterId: client.characterId,
         name: client.characterName,
+        selector: encodeCharacterSelector(client.characterId),
       }));
   }
 

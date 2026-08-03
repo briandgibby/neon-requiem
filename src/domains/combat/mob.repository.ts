@@ -1,33 +1,27 @@
 import { PrismaClient } from '@prisma/client';
-
-export interface MobTemplateRecord {
-  id: string;
-  slug: string;
-  name: string;
-  level: number;
-  body: number;
-  agility: number;
-  dexterity: number;
-  strength: number;
-  logic: number;
-  intuition: number;
-  willpower: number;
-  charisma: number;
-  maxHp: number;
-  maxAp: number;
-  armorValue: number;
-  masteryCQC: number;
-  masteryPistol: number;
-  masteryRifle: number;
-  masteryAutomatic: number;
-}
+import { MobTemplateRecord } from './combat.types';
 
 export class MobRepository {
   constructor(private readonly db: PrismaClient) {}
 
+  async findById(id: string): Promise<MobTemplateRecord | null> {
+    return this.db.mobTemplate.findUnique({
+      where: { id },
+    }) as unknown as MobTemplateRecord | null;
+  }
+
   async findBySlug(slug: string): Promise<MobTemplateRecord | null> {
     return this.db.mobTemplate.findUnique({
       where: { slug },
+    }) as unknown as MobTemplateRecord | null;
+  }
+
+  async findEliteByCorporation(corporationId: string): Promise<MobTemplateRecord | null> {
+    return this.db.mobTemplate.findFirst({
+      where: {
+        eliteOnly: true,
+        corporationId,
+      },
     }) as unknown as MobTemplateRecord | null;
   }
 

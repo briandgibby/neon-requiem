@@ -1,5 +1,7 @@
 import { Faction, Race, ClassName, MentorSpirit, StreetDocPath } from '../../shared/types';
 
+export type HotkeyMap = Record<string, string>;
+
 export interface CreateCharacterInput {
   accountId: string;
   name: string;
@@ -68,6 +70,8 @@ export interface CharacterRecord {
   maxStun: number;
   currentMana: number;
   maxMana: number;
+  currentAp: number;
+  apRecoveryTicks: number;
   manaRegenRate: number;
   manaRegenBuff: number;
   armorValue: number;
@@ -80,9 +84,11 @@ export interface CharacterRecord {
   reputationCorp: number;
   reputationShadow: number;
   areaKnowledge: string[];
+  hotkeys: HotkeyMap;
 
   isJackedIn: boolean;
   activeNodeId: string | null;
+  matrixOverwatchScore: number;
   equippedDeckId: string | null;
   activeAuraId: string | null;
 

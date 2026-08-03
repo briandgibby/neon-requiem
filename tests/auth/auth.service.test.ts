@@ -21,7 +21,7 @@ describe('AuthService.register', () => {
   it('returns a token on successful registration', async () => {
     mockRepository.findByUsername.mockResolvedValue(null);
     mockRepository.findByEmail.mockResolvedValue(null);
-    mockRepository.create.mockResolvedValue({ id: 'acc_1', username: 'testuser' });
+    mockRepository.create.mockResolvedValue({ id: 'acc_1', username: 'testuser', isAdmin: false });
 
     const result = await service.register({
       username: 'testuser',
@@ -30,6 +30,7 @@ describe('AuthService.register', () => {
     });
 
     expect(result.token).toBe('mock.jwt.token');
+    expect(result.isAdmin).toBe(false);
     expect(mockRepository.create).toHaveBeenCalledTimes(1);
   });
 
@@ -68,10 +69,12 @@ describe('AuthService.login', () => {
       username: 'testuser',
       email: 'test@example.com',
       passwordHash: hash,
+      isAdmin: true,
     });
 
     const result = await service.login({ username: 'testuser', password: 'correctpass' });
     expect(result.token).toBe('mock.jwt.token');
+    expect(result.isAdmin).toBe(true);
   });
 
   it('throws UnauthorizedError for wrong password', async () => {

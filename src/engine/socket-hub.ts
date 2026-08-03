@@ -4,11 +4,13 @@ import { AuthService } from '../domains/auth/auth.service';
 import { UnauthorizedError } from '../shared/errors';
 import { RoomPresence, PresenceClient, RoomOccupant } from './room-presence';
 import { PlayerSyncCoordinator } from './player-sync-coordinator';
+import { encodeCharacterSelector } from '../shared/character-selector';
 
 export interface ConnectedClient {
   socket: Socket;
   accountId: string;
   username: string;
+  sessionAbortController: AbortController;
 }
 
 export interface SelectedCharacterInput {
@@ -49,15 +51,27 @@ export class SocketHub {
         socket,
         accountId: socket.data.accountId as string,
         username: socket.data.username as string,
+        sessionAbortController: new AbortController(),
       };
 
       // Evict any existing session for this account before registering new one
       const existing = this.clients.get(client.accountId);
-      if (existing) existing.socket.disconnect(true);
+      if (existing) {
+        existing.sessionAbortController.abort();
+        const characterId = existing.socket.data.characterId as string | undefined;
+        if (characterId) {
+          existing.socket.data.playerSyncStarted = true;
+          void this.syncCoordinator.handlePlayerDisconnect(characterId).catch((err) => {
+            console.error('[SocketHub] Failed to persist replaced player session:', err);
+          });
+        }
+        existing.socket.disconnect(true);
+      }
 
       this.clients.set(client.accountId, client);
 
       socket.on('disconnect', () => {
+        client.sessionAbortController.abort();
         // Only delete if this socket is still the registered client
         if (this.clients.get(client.accountId)?.socket === socket) {
           this.clients.delete(client.accountId);
@@ -66,7 +80,7 @@ export class SocketHub {
         const characterId = socket.data.characterId as string | undefined;
         void (async () => {
           try {
-            if (characterId) {
+            if (characterId && socket.data.playerSyncStarted !== true) {
               await this.syncCoordinator.handlePlayerDisconnect(characterId);
             }
           } catch (err) {
@@ -86,6 +100,7 @@ export class SocketHub {
         socket.to(client.roomId).emit('player_entered', {
           characterId: client.characterId,
           name: client.characterName,
+          selector: encodeCharacterSelector(client.characterId),
         });
         this.emitRoomOccupants(client.roomId);
       }
@@ -98,6 +113,7 @@ export class SocketHub {
         socket.to(move.previousRoomId).emit('player_left', {
           characterId: move.characterId,
           name: move.characterName,
+          selector: encodeCharacterSelector(move.characterId),
         });
         this.emitRoomOccupants(move.previousRoomId);
 
@@ -105,6 +121,7 @@ export class SocketHub {
         socket.to(move.nextRoomId).emit('player_entered', {
           characterId: move.characterId,
           name: move.characterName,
+          selector: encodeCharacterSelector(move.characterId),
         });
         this.emitRoomOccupants(move.nextRoomId);
       }
@@ -116,6 +133,7 @@ export class SocketHub {
       this.io.to(leave.previousRoomId).emit('player_left', {
         characterId: leave.characterId,
         name: leave.characterName,
+        selector: encodeCharacterSelector(leave.characterId),
       });
       this.emitRoomOccupants(leave.previousRoomId);
     });
@@ -123,6 +141,11 @@ export class SocketHub {
 
   onConnection(handler: (socket: Socket) => void | Promise<void>): void {
     this.io.on('connection', handler);
+  }
+
+  getSessionSignal(socket: Socket): AbortSignal | null {
+    const client = this.clients.get(socket.data.accountId as string);
+    return client?.socket === socket ? client.sessionAbortController.signal : null;
   }
 
   broadcast(event: string, data: unknown): void {
@@ -145,6 +168,11 @@ export class SocketHub {
       characterName: input.characterName,
       roomId: input.roomId,
     });
+  }
+
+  clearSelectedCharacter(socket: Socket): void {
+    this.presence.removeSocket(socket.id);
+    delete socket.data.characterId;
   }
 
   moveSelectedCharacter(socket: Socket, nextRoomId: string): void {
@@ -173,6 +201,11 @@ export class SocketHub {
 
   findSocketForCharacter(characterName: string): string | null {
     return this.presence.getSocketForCharacter(characterName);
+  }
+
+  findCharacterById(characterId: string): { socketId: string; name: string } | null {
+    const client = this.presence.getClientByCharacterId(characterId);
+    return client ? { socketId: client.socketId, name: client.characterName } : null;
   }
 
   private emitRoomOccupants(roomId: string): void {

@@ -5,10 +5,52 @@ import { RACE_DATA } from '../../shared/races';
 import { CLASS_DATA } from '../../shared/classes';
 import { ConflictError, NotFoundError, ValidationError } from '../../shared/errors';
 import { Race, ClassName } from '../../shared/types';
-import { STARTING_ROOM_SHADOW, STARTING_ROOM_CORP, MAX_STARTING_KARMA } from '../../shared/constants';
+import { STARTING_ROOM_SHADOW, STARTING_ROOM_CORP, MAX_AP, MAX_STARTING_KARMA } from '../../shared/constants';
+import { z } from 'zod';
 
 const VALID_MENTOR_SPIRITS = new Set(['bear', 'gator', 'cat', 'eagle', 'wolf', 'rat', 'valkyrie', 'chaos']);
 const BASE_STAT_KEYS = ['body', 'agility', 'dexterity', 'strength', 'logic', 'intuition', 'willpower', 'charisma'] as const;
+const HOTKEY_LIMIT = 32;
+const HOTKEY_TRIGGER_LIMIT = 24;
+const HOTKEY_COMMAND_LIMIT = 160;
+const RESERVED_HOTKEY_TRIGGERS = new Set(['__proto__', 'constructor', 'prototype']);
+
+function normalizeHotkeys(input: unknown): Record<string, string> {
+  if (
+    typeof input === 'object'
+    && input !== null
+    && Object.keys(input).some((trigger) => RESERVED_HOTKEY_TRIGGERS.has(trigger.trim().toLowerCase()))
+  ) {
+    throw new ValidationError('Hotkey trigger is reserved');
+  }
+
+  const parsed = z.record(z.string(), z.string()).safeParse(input);
+  if (!parsed.success) throw new ValidationError('Hotkeys must map text triggers to text commands');
+
+  if (Object.keys(parsed.data).length > HOTKEY_LIMIT) {
+    throw new ValidationError(`A character can have at most ${HOTKEY_LIMIT} hotkeys`);
+  }
+
+  const normalized: Record<string, string> = {};
+  for (const [rawTrigger, rawCommand] of Object.entries(parsed.data)) {
+    const trigger = rawTrigger.trim().toLowerCase();
+    const command = rawCommand.trim();
+
+    if (!trigger || trigger.length > HOTKEY_TRIGGER_LIMIT) {
+      throw new ValidationError(`Hotkey triggers must be 1-${HOTKEY_TRIGGER_LIMIT} characters`);
+    }
+    if (RESERVED_HOTKEY_TRIGGERS.has(trigger)) {
+      throw new ValidationError('Hotkey trigger is reserved');
+    }
+    if (!command || command.length > HOTKEY_COMMAND_LIMIT) {
+      throw new ValidationError(`Hotkey commands must be 1-${HOTKEY_COMMAND_LIMIT} characters`);
+    }
+
+    normalized[trigger] = command;
+  }
+
+  return normalized;
+}
 
 function calculateStatKarmaCost(floor: number, target: number): number {
   let cost = 0;
@@ -124,6 +166,8 @@ export class CharacterService {
       maxStun: 50 + (input.willpower * 10) + (input.logic * 5),
       currentMana: classData.isAwakened ? 50 + (input.willpower * 10) + (input.charisma * 5) : 0,
       maxMana: classData.isAwakened ? 50 + (input.willpower * 10) + (input.charisma * 5) : 0,
+      currentAp: MAX_AP,
+      apRecoveryTicks: 0,
       manaRegenRate: 5,
       manaRegenBuff: 0,
       armorValue: 0,
@@ -138,9 +182,11 @@ export class CharacterService {
       areaKnowledge: input.faction === 'corp'
         ? ['corp-hub', 'neon-district']
         : ['shadow-hub', 'neon-district'],
+      hotkeys: {},
 
       isJackedIn: false,
       activeNodeId: null,
+      matrixOverwatchScore: 0,
       equippedDeckId: null,
       activeAuraId: null,
 
@@ -157,5 +203,14 @@ export class CharacterService {
 
   async listCharacters(accountId: string): Promise<CharacterRecord[]> {
     return this.repo.findByAccountId(accountId);
+  }
+
+  async updateHotkeys(characterId: string, accountId: string, hotkeys: unknown): Promise<CharacterRecord> {
+    const character = await this.repo.findByIdAndAccount(characterId, accountId);
+    if (!character) throw new NotFoundError('Character');
+
+    return this.repo.updateCharacter(characterId, {
+      hotkeys: normalizeHotkeys(hotkeys),
+    });
   }
 }

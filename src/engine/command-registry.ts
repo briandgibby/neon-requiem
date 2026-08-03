@@ -1,6 +1,8 @@
 import { CommandOutput } from './command-dispatcher';
 
 export type ExecutionMode = 'physical' | 'matrix' | 'wireless' | 'any';
+export type CommandArgumentSource = 'direction' | 'poi' | 'ice';
+export type CommandArgumentSuggestionSource = 'occupant';
 
 export interface CommandContext {
   action: string;
@@ -20,7 +22,19 @@ export interface CommandHandler {
   readonly label: string;
   readonly description: string;
   readonly usage?: string;
+  readonly argumentSource?: CommandArgumentSource;
+  readonly argumentSuggestionSource?: CommandArgumentSuggestionSource;
   execute(context: CommandContext): Promise<void>;
+}
+
+export interface CommandMetadata {
+  aliases: string[];
+  mode: ExecutionMode;
+  label: string;
+  description: string;
+  usage?: string;
+  argumentSource?: CommandArgumentSource;
+  argumentSuggestionSource?: CommandArgumentSuggestionSource;
 }
 
 export class CommandRegistry {
@@ -41,4 +55,16 @@ export class CommandRegistry {
   getAll(): CommandHandler[] {
     return this.all;
   }
+}
+
+export function listCommandMetadata(registry: CommandRegistry): CommandMetadata[] {
+  return registry.getAll().map((handler) => ({
+    aliases: [...handler.aliases],
+    mode: handler.mode,
+    label: handler.label,
+    description: handler.description,
+    usage: handler.usage,
+    argumentSource: handler.argumentSource,
+    argumentSuggestionSource: handler.argumentSuggestionSource,
+  }));
 }

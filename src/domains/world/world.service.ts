@@ -1,6 +1,6 @@
 import { WorldRepository } from './world.repository';
 import { CharacterRepository } from '../character/character.repository';
-import { RoomRecord, MovementResult } from './world.types';
+import { RoomRecord, MovementResult, isEffectiveSafeZone } from './world.types';
 import { Direction } from '../../shared/types';
 import { NotFoundError, ValidationError } from '../../shared/errors';
 import { NavigationUtils } from './navigation';
@@ -24,6 +24,12 @@ export class WorldService {
 
   async getPOIs(zoneId: string): Promise<RoomRecord[]> {
     return this.worldRepo.findPOIsByZone(zoneId);
+  }
+
+  async isEffectiveSafeZone(roomId: string): Promise<boolean> {
+    const room = await this.worldRepo.findRoomById(roomId);
+    if (!room) throw new NotFoundError('Room');
+    return isEffectiveSafeZone(room);
   }
 
   async moveCharacter(characterId: string, accountId: string, direction: Direction): Promise<MovementResult> {
@@ -55,7 +61,7 @@ export class WorldService {
     }
 
     await this.worldRepo.updateCharacterLocation(characterId, nextRoom.id);
-    
+
     // Sync memory presence
     this.presence.moveCharacterById(characterId, nextRoom.id);
 

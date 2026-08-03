@@ -28,6 +28,10 @@ const createSchema = z.object({
   mentorSpirit: z.enum(['bear', 'gator', 'cat', 'eagle', 'wolf', 'rat', 'valkyrie', 'chaos']).optional(),
 });
 
+const updateHotkeysSchema = z.object({
+  hotkeys: z.unknown(),
+});
+
 export function registerCharacterRoutes(
   app: FastifyInstance,
   characterService: CharacterService,
@@ -65,6 +69,22 @@ export function registerCharacterRoutes(
       return reply.send(await characterService.getCharacter(id, payload.accountId));
     } catch (err) {
       if (err instanceof AppError) return reply.code(err.statusCode).send({ error: err.message });
+      throw err;
+    }
+  });
+
+  app.patch('/characters/:id/hotkeys', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    try {
+      const payload = extractAuthPayload(authService, req.headers.authorization);
+      const body = updateHotkeysSchema.parse(req.body);
+      const character = await characterService.updateHotkeys(id, payload.accountId, body.hotkeys);
+      return reply.send({ hotkeys: character.hotkeys });
+    } catch (err) {
+      if (err instanceof AppError) return reply.code(err.statusCode).send({ error: err.message });
+      if (err instanceof ZodError) {
+        return reply.code(422).send({ error: 'Validation failed', details: err.flatten() });
+      }
       throw err;
     }
   });

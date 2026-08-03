@@ -21,13 +21,29 @@ export class SecurityPatrol implements Tickable {
       }
     });
 
+    let triggeredAlarmCount = 0;
+    let skippedAlarmCount = 0;
+
     for (const room of dirtyRooms) {
+      const alarmResult = await this.combatService.triggerSecurityAlarm(room.id);
+      if (!alarmResult.triggered) {
+        skippedAlarmCount += 1;
+        this.logger.info(
+          { roomId: room.id, roomSlug: room.slug, reason: alarmResult.reason },
+          'Security patrol skipped alarm trigger'
+        );
+        continue;
+      }
+
+      triggeredAlarmCount += 1;
       this.logger.warn({ roomId: room.id, roomSlug: room.slug }, 'Security patrol discovered a messy room! Triggering alarm.');
-      await this.combatService.triggerSecurityAlarm(room.id);
     }
 
     if (dirtyRooms.length > 0) {
-      this.logger.info({ dirtyRoomCount: dirtyRooms.length }, 'Security patrol completed alarm triggers');
+      this.logger.info(
+        { dirtyRoomCount: dirtyRooms.length, triggeredAlarmCount, skippedAlarmCount },
+        'Security patrol completed alarm scan'
+      );
     }
   }
 }

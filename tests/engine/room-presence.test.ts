@@ -14,8 +14,16 @@ describe('RoomPresence', () => {
     });
 
     expect(presence.getRoomOccupants('room-a')).toEqual([
-      { characterId: 'char-1', name: 'Chrome Fox' },
+      {
+        characterId: 'char-1',
+        name: 'Chrome Fox',
+        selector: '@neon-requiem-character-selector:char-1',
+      },
     ]);
+    expect(presence.getClientByCharacterId('char-1')).toEqual(expect.objectContaining({
+      socketId: 'socket-1',
+      characterName: 'Chrome Fox',
+    }));
   });
 
   it('moves selected characters between rooms and updates both occupant lists', () => {
@@ -40,7 +48,11 @@ describe('RoomPresence', () => {
     });
     expect(presence.getRoomOccupants('room-a')).toEqual([]);
     expect(presence.getRoomOccupants('room-b')).toEqual([
-      { characterId: 'char-1', name: 'Chrome Fox' },
+      {
+        characterId: 'char-1',
+        name: 'Chrome Fox',
+        selector: '@neon-requiem-character-selector:char-1',
+      },
     ]);
   });
 
@@ -88,7 +100,11 @@ describe('RoomPresence', () => {
 
     expect(presence.getRoomOccupants('room-a')).toEqual([]);
     expect(presence.getRoomOccupants('room-b')).toEqual([
-      { characterId: 'char-2', name: 'Neon Wraith' },
+      {
+        characterId: 'char-2',
+        name: 'Neon Wraith',
+        selector: '@neon-requiem-character-selector:char-2',
+      },
     ]);
   });
 });

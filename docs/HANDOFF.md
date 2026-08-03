@@ -1,7 +1,7 @@
 # Neon Requiem - Project Handoff
 
-**Date:** 2026-05-18
-**Session focus:** Phase 4.3 architecture deepening complete. Auth hardening, client connectivity, xterm crash, and socket command hardening applied. Server tested end-to-end.
+**Date:** 2026-08-02
+**Session focus:** All tracked Phase 4.4 follow-ons implemented and verified.
 
 ---
 
@@ -20,7 +20,8 @@
 - Frontend verification:
   - `cd client; npm exec -- tsc -b`: passes.
   - `cd client; npm run build`: passes under Node `v22.22.2` after reinstalling frontend dependencies with optional native packages.
-  - `cd client; npm run lint`: fails on existing lint debt, mostly explicit `any`, React hook rules, static components declared during render, and `useSocket` returning `socketRef.current`.
+  - `cd client; npm run lint`: passes with no rule suppressions (verified 2026-08-02).
+  - Latest full backend regression run: **41 suites / 284 tests** pass (verified 2026-08-02).
 - Environment setup update:
   - Node `v22.22.2` is installed, but this Codex shell still resolves `node` through `fnm` to `v20.20.2` unless Node 22 is forced into `PATH`.
   - Verified command prefix in this session: `PATH=/home/bdgibby/.local/share/fnm/node-versions/v22.22.2/installation/bin:$PATH`.
@@ -50,7 +51,28 @@
 - Database reset (2026-05-18 debugging pass):
   - Requested account wipe completed against configured Postgres DB.
   - Final verified counts: `accounts = 0`, `characters = 0`.
-- Git branch at session end: `feat/phase-4.3` (not yet merged to main).
+- Phase 4.3 merge status:
+  - `feat/phase-4.3` merged to `main` with merge commit `471fd50`.
+  - `main` pushed to `origin/main`.
+  - Handoff update committed before merge: `cd25a67 docs(handoff): update phase 4.3 handoff`.
+- Verified pre-merge result (2026-05-23):
+  - `npm run build`: passes.
+  - `npm test -- --silent`: passes, **25 suites / 146 tests**.
+  - `cd client; npm exec -- tsc -b`: passes.
+  - `cd client; npm run build`: passes with Vite chunk-size/plugin-timing warnings only.
+- Verified Phase 4.4A partial result (2026-05-23):
+  - `npm run build`: passes.
+  - `npm test -- --silent`: passes, **26 suites / 156 tests**.
+  - Focused tests also pass:
+    - `tests/world/world.service.test.ts`
+    - `tests/combat/combat.service.test.ts`
+    - `tests/engine/security-patrol.test.ts`
+- Verified Phase 4.4A reinforcement completion (2026-07-12):
+  - `npx jest --runInBand tests/engine/combat-system.test.ts tests/world/world.service.test.ts`: passes, **2 suites / 22 tests**.
+  - `npm run build`: passes.
+- Verified Phase 4.4A final backend result (2026-07-12):
+  - `npm test -- --silent`: passes, **26 suites / 163 tests**.
+  - `npm run build`: passes.
 
 ---
 
@@ -219,7 +241,7 @@ The project has moved from a shallow procedural model to a **Deep Module** archi
    - `.env` `DATABASE_URL` must use the Windows host IP, not `localhost`.
 
 12. **Phase 4.3 — Mission Instancing, Physical Body Persistence & Alert Escalation (COMPLETE, 2026-05-16):**
-   - Branch: `feat/phase-4.3` (15 commits; not yet merged to main)
+   - Branch: `feat/phase-4.3` (merged to `main`, 2026-05-23)
    - Spec: `docs/superpowers/specs/2026-05-13-phase-4.3-instancing-body-persistence-design.md`
    - Plan: `docs/superpowers/plans/2026-05-13-phase-4.3-implementation.md`
    - All 12 tasks delivered; 24 suites / 132 tests green.
@@ -235,24 +257,210 @@ The project has moved from a shallow procedural model to a **Deep Module** archi
      - Safe-zone fields (`isSafeZone`, `safeZoneOverrideActive`) on `Room`
    - **Follow-on phases (not this slice):** mob aggro/follow system; body-guarding mechanic; elite mob spawn logic at RED alert; safe-zone enforcement in mob AI
 
+15. **Phase 4.4A — Safe-Zone Enforcement Foundation (COMPLETE, 2026-07-12):**
+   - Plan: `docs/superpowers/plans/2026-05-23-phase-4.4a-safe-zone-enforcement.md`
+   - Metadata convention added to the plan doc for graph/search friendliness: phase, status, dependencies, enabled future work, domains, and systems.
+   - Scope decision:
+     - Block automated hostile NPC behavior in normal safe zones.
+     - Do **not** change player-initiated combat, PvP rules, rewards, event recruitment, faction allegiance, elite spawns, or full aggro/follow behavior in this slice.
+   - Canonical policy:
+     - `effectiveSafeZone = room.isSafeZone && !room.safeZoneOverrideActive`
+     - The policy belongs in the World domain because it governs zone-specific behavior flags.
+   - Enforcement decisions:
+     - Add a world-domain helper/service lookup so callers do not duplicate flag logic. **Done.**
+     - Gate automated alarm triggering so effective safe zones do not create/mutate combat sessions into RED escalation. **Done.**
+     - Gate reinforcement spawning as a second check, so stale sessions or event flag changes cannot spawn hostile mobs after protection resumes. **Done.**
+     - Blocked automated alarms should be clean no-ops with explicit results and should not mark rooms clean. **Done.**
+   - Implemented:
+     - `src/domains/world/world.types.ts`: added `isEffectiveSafeZone(room)` using `room.isSafeZone && !room.safeZoneOverrideActive`.
+     - `src/domains/world/world.service.ts`: added `WorldService.isEffectiveSafeZone(roomId)`, throwing `NotFoundError('Room')` for missing rooms to match existing world lookup behavior.
+     - `src/domains/combat/combat.types.ts`: added `SecurityAlarmResult`.
+     - `src/domains/combat/combat.service.ts`: `triggerSecurityAlarm(roomId)` now owns safe-zone alarm blocking through the world-domain safe-zone policy and checks before `getOrCreateEcsSession`.
+     - `src/engine/security-patrol.ts`: patrol reacts to the explicit alarm result, logs safe-zone skips, and reports triggered/skipped counts without knowing safe-zone flags.
+     - `src/engine/ecs/systems/combat-reinforcement-system.ts`: reinforcement spawning checks a narrow safe-zone policy, clears blocked pending timers, and preserves override/non-safe behavior.
+     - `src/server.ts`: supplies `WorldService` to the reinforcement system as the safe-zone policy implementation.
+     - Tests added/updated:
+       - `tests/world/world.service.test.ts`
+       - `tests/combat/combat.service.test.ts`
+       - `tests/engine/security-patrol.test.ts`
+       - `tests/engine/combat-system.test.ts`
+   - Architecture note:
+     - `/improve-codebase-architecture` review recommended making `triggerSecurityAlarm` the deep module for alarm blocking. Implemented: safe-zone checks, ECS session creation ordering, RED mutation, and no-op result all sit behind the alarm interface.
+   - Deferred event behavior:
+     - Future hostile safe-zone events may set `safeZoneOverrideActive = true` for affected rooms.
+     - Event-specific logic may enable alarm-like behavior, but civic-defense events should be able to spawn friendly/allied security NPCs who fight alongside recruited players rather than hostile law/security mobs.
+     - Event lifecycle, faction allegiance, friendly NPC support, recruitment, participation rewards, and cleanup guarantees are deferred to later event-system phases.
+
+16. **Phase 4.4B — Physical Mob AI Targeting (SLICE 3 COMPLETE, 2026-07-12):**
+   - Plan: `docs/superpowers/plans/2026-07-12-phase-4.4b-mob-ai-targeting.md`
+   - First vertical slice:
+     - Added `MobAiSystem` as a heartbeat subscriber for hostile physical NPC behavior.
+     - Hostile NPCs select and attack valid player targets in the same non-safe physical room.
+     - Effective safe zones suppress automated mob attacks.
+     - Jacked-in deckers are targetable by `DeckerComponent.physicalRoomId`, keeping physical bodies vulnerable while the decker is in the Matrix.
+     - Mob attacks resolve through the existing `MoveDispatcher` and `AttackExecutor`.
+     - Reinforcement and mission-target mobs now spawn with hostile AI state.
+     - AP-starved hostile mobs enter recovery so they can keep attacking after `CombatTickSystem` refills AP.
+     - `SafeZonePolicy` is now a shared World-domain contract consumed by alarm, reinforcement, and mob AI systems.
+   - Second vertical slice:
+     - Hostile mobs retain targets between ticks and can follow an existing target into an adjacent non-safe room.
+     - Hostile mobs drop their target instead of crossing into an effective safe zone.
+     - Pursuit uses World service room lookup and does not attack on the same tick as movement.
+     - Physical movement/navigation handlers sync active player ECS `PositionComponent` values after successful movement, so pursuit follows runtime movement instead of stale ECS location.
+   - Third vertical slice:
+     - Hostile mobs with existing targets can path through connected non-safe rooms instead of only following adjacent targets.
+     - Pursuit remains one room per AI tick and does not attack on the same tick as movement.
+     - Pursuit searches up to eight room transitions per AI tick and treats farther targets as lost scent to keep heartbeat work bounded.
+     - Pursuit does not path through intermediate effective safe-zone rooms.
+     - Pursuit rejects id-valued exits that do not resolve to matching room slugs, mirroring production movement semantics.
+   - Follow-on completed 2026-08-02: room-local combat output now covers autonomous attacks and pursuit movement.
+
+17. **Phase 4.4C — RED-Alert Elite Spawns (COMPLETE, 2026-07-12):**
+   - Plan: `docs/superpowers/plans/2026-07-12-phase-4.4c-red-alert-elite-spawns.md`
+   - Implemented:
+     - `MobRepository.findEliteByCorporation(corporationId)` looks up elite-only templates by corporation behind the Combat domain service seam.
+     - `CombatReinforcementSystem` reads `Room.factionOwner` through the World room lookup when a RED-alert reinforcement timer matures.
+     - RED-alert reinforcement resolution spawns ordinary security plus a matching elite template when one exists.
+     - Non-RED reinforcement resolution does not query or spawn elite templates.
+     - Missing ordinary security guard templates do not produce elite-only fallback spawns.
+     - RED-alert room ownership lookup failures surface for retry/diagnosis instead of silently hiding bad ownership data.
+     - Elite mobs spawn with hostile AI state and therefore participate in the Phase 4.4B mob AI loop.
+   - Deferred follow-ons:
+     - First-class corporation/facility ownership on `MissionInstance`.
+     - Weighted selection among multiple elite archetypes.
+     - RED-alert elite spawns across every active/player-occupied instance room.
+
+18. **Phase 4.4D — Body-Guarding for Jacked-In Deckers (COMPLETE, 2026-07-12):**
+   - Plan: `docs/superpowers/plans/2026-07-12-phase-4.4d-body-guarding.md`
+   - Implemented:
+     - Added `GuardExecutor` for the existing `guard` combat move.
+     - `guard` marks the actor as guarding a specific same-room target.
+     - Guarding a jacked-in decker resolves the target's physical body room via `DeckerComponent.physicalRoomId`.
+     - `CombatStatusComponent` now records `guardedEntityId`.
+     - `MobAiSystem` redirects hostile attacks aimed at a jacked-in decker's physical body to a living same-room guard.
+   - Deferred follow-ons:
+     - Guard duration/expiration rules.
+     - Multiple-guard priority ordering.
+   - Follow-on completed 2026-08-02: room-local combat output identifies body-guard interceptions.
+
+19. **Command Picker Hotkey Slice (COMPLETE, 2026-07-12):**
+   - Plan: `docs/superpowers/plans/2026-07-12-command-picker-hotkeys.md`
+   - Implemented:
+     - Added command metadata serialization over `CommandRegistry.getAll()`.
+     - Added authenticated `GET /api/commands`, returning safe command metadata without executors.
+     - Added a mode-aware client command picker for physical vs. matrix commands.
+     - Commands without usage run directly from picker buttons; commands with usage can be selected and composed with an argument field.
+     - Movement aliases remain alias-only in the picker: entering `e` for Move sends `e`, not `n e`.
+   - Deferred follow-ons:
+     - Persisted per-character hotkey mappings.
+     - Entity-aware argument dropdowns for commands such as `spike <ice-id>`.
+     - Drag/drop or keyboard remapping UI.
+
+20. **Phase 4.4E — Alert-Expanded Patrol Routes (COMPLETE, 2026-07-12):**
+   - Plan: `docs/superpowers/plans/2026-07-12-alert-expanded-patrol-routes.md`
+   - Implemented:
+     - Added `AlertPatrolSystem` for NPCs with `AiComponent.state = 'patrol'`.
+     - GREEN sessions keep patrol guards in fixed positions.
+     - YELLOW sessions pull patrols one room per tick along authored room-id `patrolRoute` values toward the alerted room.
+     - RED sessions can pull patrols one room per tick through connected non-safe rooms without an authored route, bounded to eight room transitions per heartbeat tick.
+     - Patrols do not start in or cross effective safe-zone rooms.
+     - Patrols become `hostile` after reaching an alerted room so `MobAiSystem` can handle attacks.
+     - Room and safe-zone lookup failures are reported through diagnostics while the affected patrol is isolated from the rest of the heartbeat.
+   - Follow-on completed 2026-08-02: authored patrol definitions now persist in World data and materialize into ECS during startup.
+
+21. **Redmond Barrens World Content (COMPLETE, 2026-08-02):**
+   - Added a connected 10-room `Z`-security Redmond Barrens zone.
+   - Added five gang-protected safe rooms for commerce/social activity and five lawless rooms for hostile content.
+   - Connected Redmond bidirectionally to Shadow Gang Turf, and repaired the Shadow ↔ Neon ↔ Corp world links for existing databases.
+   - Added unique, directionally coherent map coordinates to Redmond and the existing hub rooms.
+   - Authored room exits now live in both `create` and `update` upsert branches so reseeding repairs stale world graphs.
+   - Live verification confirmed room count, reachability, reciprocal exits, coordinates, safe-zone policy, and repeatable World data.
+   - Diagnose and spec reviews found no behavioral defects; the standards review's unused bindings were removed.
+   - Architecture review recommendation: introduce a canonical World bootstrap module before the next large Zone expansion, but defer that refactor for this localized slice.
+
+22. **ICE Seed Idempotency (COMPLETE, 2026-08-02):**
+   - Reproduced unconditional ICE duplication: each full seed run added one identical Killer ICE and Blaster ICE row to the same Matrix node.
+   - Added the database invariant `@@unique([nodeId, slug])`; the node-scoped slug is the authored identity while the database `id` remains the runtime/ECS identity.
+   - Added a data-repair migration that removes existing duplicate ICE rows before creating the compound unique index.
+   - Replaced unconditional ICE `create` calls with compound-key upserts.
+   - Applied the migration to the development database, reducing six copies of each seeded ICE definition to one.
+   - Two consecutive full seed runs preserve exactly one row and the same database ID for each ICE definition.
+   - Diagnose and architecture reviews found no actionable defects or required deepening work.
+
+23. **Persisted Per-Character Hotkeys (COMPLETE, 2026-08-02):**
+   - Added an owned-character `PATCH /characters/:id/hotkeys` endpoint with bounded trigger/command validation and reserved-key protection.
+   - Added a JSONB-backed per-character hotkey map and migration with an empty-map default.
+   - Added save, run, and remove controls to the existing command picker; failed saves retain the trigger for retry.
+   - Hotkey expansion occurs only for raw terminal input. Picker, navigation, and saved-command controls dispatch canonical command text directly.
+   - Client writes serialize against the latest confirmed server map so overlapping saves/removals cannot overwrite one another.
+   - Live browser verification confirmed save, reload persistence, expansion-driven movement, and removal; focused tests, all backend tests, and both production builds pass.
+   - Diagnose and architecture re-reviews found no actionable defects or required-now design issues after concurrency, dispatch-boundary, prototype-key, and picker-selection regression fixes; standards review approved the final slice.
+
+24. **Entity-Aware Command Arguments (COMPLETE, 2026-08-02):**
+   - Extended safe command metadata with compact option-source declarations for movement directions, known POIs, and active ICE.
+   - `GameView` adapts existing live room/matrix state into uniform display-label/value options; opaque ICE database IDs remain hidden behind readable names and HP.
+   - The picker disables Run and Save when a structured command has no valid target, and excludes defeated ICE.
+   - Room lookups now include zone identity, repairing the existing client area-knowledge/zone-slug contract used to expose known POIs.
+   - Tell remains on its existing free-text/global-player path, augmented with non-exhaustive local-occupant suggestions. Suggestions use stable character IDs behind display names to avoid local duplicate/multi-word-name misdelivery.
+   - Pure composition tests cover movement alias preservation and opaque ICE IDs; registry and room-view contracts have focused regression coverage.
+
+25. **MissionInstance-Wide Alert Sources (COMPLETE, 2026-08-02):**
+   - Added a persisted `alertSourceRoomId` so an instance-wide YELLOW/RED level has a concrete patrol destination after its originating ECS session ends.
+   - Physical security alarms and matrix actions escalate the owning active MissionInstance with their source room; updates are monotonic and use guarded `updateMany` writes to avoid concurrent downgrades.
+   - `MatrixTickSystem` reconciles active MissionInstance and matrix-node alerts in both directions, including persisted nodes not yet materialized in ECS; mission nodes never auto-decay and failed writes remain retryable.
+   - `AlertPatrolSystem` merges ECS combat alerts with active persisted instance sources, prefers the strongest duplicate source, and prevents patrols from crossing MissionInstance boundaries.
+   - Live events may replace a same-level source, while convergence retries can only fill a missing source. Both paths use atomic guards, so an older retry cannot overwrite a newer event during a race.
+   - Source updates validate that the room belongs to the active instance; resolved/inactive instances do not continue driving matrix alerts or patrol movement, even while an ECS combat session lingers before cleanup.
+   - The migration is applied locally; no active YELLOW/RED instances required source backfill. Focused tests, all 240 backend tests, and both production builds pass.
+
+26. **Autonomous Room Event Output (COMPLETE, 2026-08-02):**
+   - Added a small `RoomEventPublisher` port and adapted it to the existing Socket.IO `message` event in server composition.
+   - Hostile NPC attacks, body-guard interceptions, pursuit departures/arrivals, and alert-patrol departures/arrivals now publish only to affected physical rooms.
+   - Combat actions use the existing terminal `combat` style; movement uses `info`. Publisher failures are isolated from ECS state changes and covered by focused regression tests.
+
+27. **Persisted Patrol Definitions (COMPLETE, 2026-08-02):**
+   - Added `PatrolDefinition` World data linking a stable slug to a mob template, start room, ordered route slugs, and an enabled flag.
+   - `PatrolBootstrap` resolves route slugs to ECS room IDs before the heartbeat starts and materializes patrol-state mobs through the existing `MobFactory`.
+   - Startup rejects malformed, repeated-room, non-adjacent, effective-safe-zone, and MissionInstance-scoped routes independently; in-flight reservations and definition components prevent duplicate patrols across overlapping or repeated loads.
+   - Seeded `arcology-security-sweep` across the Executive Office Wing, Arcology Main Plaza, and Corporate Transit Hub. Repeated seeding leaves one definition, and live loading creates one patrol with no warnings.
+   - Migration `20260802140000_patrol_definitions` is applied locally; focused tests, the full backend suite, and both production builds pass.
+
+28. **World Safe-Zone Event Override Service (COMPLETE, 2026-08-02):**
+   - Added `WorldEventService` with explicit start/end operations over caller-supplied room IDs; repeated calls are idempotent and report the number of changed rooms.
+   - The service validates the complete target set before mutation and rejects missing rooms, ordinary non-safe rooms, and MissionInstance rooms.
+   - `WorldRepository` transactionally revalidates eligibility, guards the state transition, and rolls the write back if concurrent changes make the affected count inconsistent; its generation-guarded room cache rejects stale in-flight fills after a committed change.
+   - Live verification temporarily disabled protection in the Neon Razor Market and restored the original value. Focused race/cache tests, the full backend suite, and both production builds pass.
+   - Deliberately still deferred: event identity/persistence, scheduling, overlapping-event ownership, faction/allegiance behavior, rewards, and crash-recovery restoration.
+
+29. **Admin Snapshot History (COMPLETE, 2026-08-02):**
+   - Added a database-backed `Account.isAdmin` capability; the server rechecks current account state for every snapshot-history request instead of trusting the client or a long-lived JWT claim.
+   - Disconnect snapshots now use the dedicated `PLAYER_SNAPSHOT` audit category. The migration reclassifies existing snapshot-bearing transaction rows and adds a newest-first audit index.
+   - Added a bounded, read-only `/admin/snapshots` endpoint with an optional character ID filter. Responses expose only validated HP, stun, mana, room, and timestamp data rather than arbitrary audit metadata.
+   - Added an administrator-only snapshot archive view to the persona screen with filtering and refresh controls.
+
+30. **Frontend Lint Debt (COMPLETE, 2026-08-02):**
+   - Cleared all 49 previously tracked ESLint findings (46 errors and 3 warnings) without suppressing rules.
+   - Replaced render-time ref reads and effect-driven derived state with explicit socket, hotkey queue, authentication, command-draft, and character-creation state transitions.
+   - Added concrete API, character, room, Matrix, POI, ICE, and validation-error types in place of explicit `any` values.
+   - Hoisted reusable corner accents and stopped declaring component identities during render; terminal callbacks now declare complete hook dependencies while retaining current Matrix-mode prompts.
+   - Full client lint, the client production build, and the backend regression suite pass.
+
+31. **Final Integration Hardening (COMPLETE, 2026-08-02):**
+   - Matrix-jacked characters now survive socket reconnection: disconnect persistence is coalesced, stale socket selections are canceled, and persisted personas restore AP, recovery countdown, and overwatch score into ECS before commands resume.
+   - Concurrent restores of the same Matrix host reuse one ECS node and ICE authority, and stale database links are normalized back to physical mode.
+   - Mission alert propagation and persisted patrol loading now cross explicit service boundaries; the World domain exposes template IDs and the Combat domain resolves the owned mob records.
+   - Added overlap regressions for disconnect waiting, canceled session restoration, concurrent Matrix-node creation, and missing patrol templates.
+
 ---
 
 ## 4. Immediate Next Steps (Phase 4.4+)
 
-**Merge and continue**
+**Phase 4.4A through 4.4E and the Redmond Barrens content slice are complete locally.**
 
-1. **Merge `feat/phase-4.3` to main** — all tests green, build clean; ready to merge.
-2. All four architecture candidates from `/improve-codebase-architecture` are complete.
-3. **Safe-zone mob AI enforcement** — `Room.isSafeZone` / `safeZoneOverrideActive` fields exist; mob AI should read `effectiveSafeZone = isSafeZone && !safeZoneOverrideActive` before targeting. Recommended next implementation slice because it is small and foundational for aggro/follow.
-4. **Elite mob spawn logic** — `MobTemplate.eliteOnly`/`corporationId` fields exist; spawn-at-RED trigger in `InstanceCleanupSystem` or a new `EliteSpawnSystem` is the next concrete task.
-5. **Mob aggro/follow system** — room-to-room chase; safe-zone boundary enforcement; separate phase.
-6. **Body-guarding mechanic** — tank actively shields a jacked-in decker's physical body; separate phase.
-7. **Hotkey picker UI** — `CommandRegistry.getAll()` is ready; frontend component needed to let players configure hotkeys via dropdowns (accessibility requirement: full playability without typing).
+There are no remaining Phase 4.4 follow-ons in the tracked implementation plans.
 
 **Remaining carry-forward items:**
-- Snapshot history/admin tooling — no admin-facing snapshot history view yet
-- Frontend lint debt in `client/src` (explicit `any`, React hook rules, static components declared during render)
-- `WorldEventService` — `safeZoneOverrideActive` flag is wired at the DB level; a service to flip it during events is not yet implemented
+- None.
 
 
 ---

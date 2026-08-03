@@ -6,11 +6,15 @@ import {
   HealthComponent, 
   StunComponent, 
   ManaComponent, 
-  PositionComponent 
+  PositionComponent,
+  ApComponent,
+  DeckerComponent,
 } from './ecs/components';
 import { AuditLogger } from './audit-logger';
 
 export class PlayerSyncCoordinator {
+  private readonly pendingDisconnects = new Map<string, Promise<void>>();
+
   constructor(
     private readonly db: PrismaClient,
     private readonly registry: EcsRegistry,
@@ -23,7 +27,26 @@ export class PlayerSyncCoordinator {
    * 2. Persist to DB via Transaction
    * 3. Confirm & Destroy Entity
    */
-  async handlePlayerDisconnect(characterId: string): Promise<void> {
+  handlePlayerDisconnect(characterId: string): Promise<void> {
+    const pending = this.pendingDisconnects.get(characterId);
+    if (pending) return pending;
+
+    const operation = this.persistAndDestroyPlayer(characterId);
+    this.pendingDisconnects.set(characterId, operation);
+    const clearPending = () => {
+      if (this.pendingDisconnects.get(characterId) === operation) {
+        this.pendingDisconnects.delete(characterId);
+      }
+    };
+    void operation.then(clearPending, clearPending);
+    return operation;
+  }
+
+  waitForPlayerDisconnect(characterId: string): Promise<void> {
+    return this.pendingDisconnects.get(characterId) ?? Promise.resolve();
+  }
+
+  private async persistAndDestroyPlayer(characterId: string): Promise<void> {
     const entityId = this.registry.getEntityByComponent<PlayerIdComponent>(
       ComponentTypes.PlayerId,
       (p) => p.characterId === characterId
@@ -45,13 +68,18 @@ export class PlayerSyncCoordinator {
             currentStun: snapshot.stun,
             currentMana: snapshot.mana,
             currentRoomId: snapshot.roomId,
+            ...(snapshot.currentAp !== undefined ? { currentAp: snapshot.currentAp } : {}),
+            ...(snapshot.apRecoveryTicks !== undefined ? { apRecoveryTicks: snapshot.apRecoveryTicks } : {}),
+            ...(snapshot.matrixOverwatchScore !== undefined
+              ? { matrixOverwatchScore: snapshot.matrixOverwatchScore }
+              : {}),
           },
         });
 
         // Log the final snapshot state in the same transaction as the write.
         await tx.auditLog.create({
           data: {
-            category: 'TRANSACTION',
+            category: 'PLAYER_SNAPSHOT',
             severity: 'INFO',
             message: `Player ${characterId} disconnected. Final state persisted.`,
             characterId,
@@ -82,6 +110,8 @@ export class PlayerSyncCoordinator {
     const stun = this.registry.getComponent<StunComponent>(entityId, ComponentTypes.Stun);
     const mana = this.registry.getComponent<ManaComponent>(entityId, ComponentTypes.Mana);
     const pos = this.registry.getComponent<PositionComponent>(entityId, ComponentTypes.Position);
+    const ap = this.registry.getComponent<ApComponent>(entityId, ComponentTypes.Ap);
+    const decker = this.registry.getComponent<DeckerComponent>(entityId, ComponentTypes.Decker);
 
     if (!health || !pos) return null;
 
@@ -90,7 +120,10 @@ export class PlayerSyncCoordinator {
       stun: stun?.current || 0,
       mana: mana?.current || 0,
       roomId: pos.roomId,
-      timestamp: Date.now()
+      timestamp: Date.now(),
+      ...(ap ? { currentAp: ap.current } : {}),
+      ...(ap ? { apRecoveryTicks: ap.recoveryTicks } : {}),
+      ...(decker ? { matrixOverwatchScore: decker.overwatchScore } : {}),
     };
   }
 
@@ -114,6 +147,11 @@ export class PlayerSyncCoordinator {
           currentHp: snapshot.hp,
           currentStun: snapshot.stun,
           currentMana: snapshot.mana,
+          ...(snapshot.currentAp !== undefined ? { currentAp: snapshot.currentAp } : {}),
+          ...(snapshot.apRecoveryTicks !== undefined ? { apRecoveryTicks: snapshot.apRecoveryTicks } : {}),
+          ...(snapshot.matrixOverwatchScore !== undefined
+            ? { matrixOverwatchScore: snapshot.matrixOverwatchScore }
+            : {}),
         }
       });
     }));

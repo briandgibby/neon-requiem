@@ -1,4 +1,5 @@
 import { WorldService } from '../../src/domains/world/world.service';
+import { isEffectiveSafeZone } from '../../src/domains/world/world.types';
 import { Direction } from '../../src/shared/types';
 import { NotFoundError, ValidationError } from '../../src/shared/errors';
 
@@ -26,6 +27,29 @@ const mockPresence = {
 const service = new WorldService(mockWorldRepo as any, mockCharRepo as any, mockPresence as any);
 
 beforeEach(() => jest.clearAllMocks());
+
+describe('isEffectiveSafeZone', () => {
+  it('returns true when safe zone protection is active', () => {
+    expect(isEffectiveSafeZone({
+      isSafeZone: true,
+      safeZoneOverrideActive: false,
+    })).toBe(true);
+  });
+
+  it('returns false when room is not a safe zone', () => {
+    expect(isEffectiveSafeZone({
+      isSafeZone: false,
+      safeZoneOverrideActive: false,
+    })).toBe(false);
+  });
+
+  it('returns false when safe zone override is active', () => {
+    expect(isEffectiveSafeZone({
+      isSafeZone: true,
+      safeZoneOverrideActive: true,
+    })).toBe(false);
+  });
+});
 
 describe('WorldService.getRoom', () => {
   it('returns room when found by slug', async () => {
@@ -115,5 +139,50 @@ describe('WorldService.moveCharacter', () => {
 
     expect(result.success).toBe(false);
     expect(result.error).toContain("room 'missing-room' does not exist");
+  });
+});
+
+describe('WorldService.isEffectiveSafeZone', () => {
+  it('returns true for effective safe zone', async () => {
+    mockWorldRepo.findRoomById.mockResolvedValue({
+      id: 'room_1',
+      isSafeZone: true,
+      safeZoneOverrideActive: false,
+    });
+
+    const result = await service.isEffectiveSafeZone('room_1');
+
+    expect(result).toBe(true);
+    expect(mockWorldRepo.findRoomById).toHaveBeenCalledWith('room_1');
+  });
+
+  it('returns false when room is not a safe zone', async () => {
+    mockWorldRepo.findRoomById.mockResolvedValue({
+      id: 'room_1',
+      isSafeZone: false,
+      safeZoneOverrideActive: false,
+    });
+
+    const result = await service.isEffectiveSafeZone('room_1');
+
+    expect(result).toBe(false);
+  });
+
+  it('returns false when safe zone override is active', async () => {
+    mockWorldRepo.findRoomById.mockResolvedValue({
+      id: 'room_1',
+      isSafeZone: true,
+      safeZoneOverrideActive: true,
+    });
+
+    const result = await service.isEffectiveSafeZone('room_1');
+
+    expect(result).toBe(false);
+  });
+
+  it('throws NotFoundError when room does not exist', async () => {
+    mockWorldRepo.findRoomById.mockResolvedValue(null);
+
+    await expect(service.isEffectiveSafeZone('missing_room')).rejects.toThrow(NotFoundError);
   });
 });

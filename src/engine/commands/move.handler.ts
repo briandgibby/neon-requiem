@@ -3,6 +3,8 @@ import { WorldService } from '../../domains/world/world.service';
 import { SocketHub } from '../socket-hub';
 import { InstanceRepository } from '../../domains/mission/instance.repository';
 import { Direction } from '../../shared/types';
+import { EcsRegistry } from '../ecs/registry';
+import { ComponentTypes, PlayerIdComponent, PositionComponent } from '../ecs/components';
 
 const DIRECTION_MAP: Record<string, Direction> = {
   n: 'north', s: 'south', e: 'east', w: 'west', u: 'up', d: 'down',
@@ -14,11 +16,13 @@ export class MoveHandler implements CommandHandler {
   readonly label = 'Move';
   readonly description = 'Move your character in a direction';
   readonly usage = '<n|s|e|w|u|d>';
+  readonly argumentSource = 'direction' as const;
 
   constructor(
     private readonly worldService: WorldService,
     private readonly socketHub: SocketHub,
     private readonly instanceRepo: InstanceRepository,
+    private readonly ecsRegistry: EcsRegistry,
   ) {}
 
   async execute(context: CommandContext): Promise<void> {
@@ -32,6 +36,7 @@ export class MoveHandler implements CommandHandler {
     }
 
     const room = result.room as any;
+    this.syncEcsPosition(characterId, room.id);
     room.occupants = this.socketHub.getRoomOccupants(room.id).filter((o) => o.characterId !== characterId);
     output.emit('room_data', room);
 
@@ -51,5 +56,16 @@ export class MoveHandler implements CommandHandler {
     } catch (_err) {
       // Non-fatal
     }
+  }
+
+  private syncEcsPosition(characterId: string, roomId: string): void {
+    const entityId = this.ecsRegistry.getEntityByComponent<PlayerIdComponent>(
+      ComponentTypes.PlayerId,
+      (player) => player.characterId === characterId,
+    );
+    if (!entityId) return;
+
+    const position = this.ecsRegistry.getComponent<PositionComponent>(entityId, ComponentTypes.Position);
+    if (position) position.roomId = roomId;
   }
 }

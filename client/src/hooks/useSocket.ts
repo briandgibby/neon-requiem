@@ -1,10 +1,10 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { io, Socket } from 'socket.io-client';
 import { API_BASE_URL } from '../lib/api';
 
 export const useSocket = (token?: string) => {
   const [isConnected, setIsConnected] = useState(false);
-  const socketRef = useRef<Socket | null>(null);
+  const [socket, setSocket] = useState<Socket | null>(null);
 
   useEffect(() => {
     if (!token) return;
@@ -14,22 +14,27 @@ export const useSocket = (token?: string) => {
       reconnectionAttempts: 5,
     });
 
-    socket.on('connect', () => {
+    const handleConnect = () => {
+      setSocket(socket);
       setIsConnected(true);
       console.log('Connected to game server');
-    });
+    };
 
-    socket.on('disconnect', () => {
+    const handleDisconnect = () => {
+      setSocket(null);
       setIsConnected(false);
       console.log('Disconnected from game server');
-    });
+    };
 
-    socketRef.current = socket;
+    socket.on('connect', handleConnect);
+    socket.on('disconnect', handleDisconnect);
 
     return () => {
       socket.disconnect();
+      socket.off('connect', handleConnect);
+      socket.off('disconnect', handleDisconnect);
     };
   }, [token]);
 
-  return { socket: socketRef.current, isConnected };
+  return { socket, isConnected };
 };

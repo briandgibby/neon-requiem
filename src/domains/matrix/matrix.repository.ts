@@ -1,26 +1,64 @@
 import { PrismaClient } from '@prisma/client';
+import type { Prisma } from '@prisma/client';
+import { z } from 'zod';
+
+type PersistedMatrixNode = Prisma.MatrixNodeGetPayload<{
+  include: { activeIC: true };
+}>;
+type PersistedMatrixIce = PersistedMatrixNode['activeIC'][number];
+
+const matrixIceTypeSchema = z.enum(['WHITE', 'GRAY', 'BLACK']);
+
+export type HydratedMatrixNode = Omit<PersistedMatrixNode, 'activeIC'> & {
+  activeIC: Array<Omit<PersistedMatrixIce, 'type'> & {
+    type: z.infer<typeof matrixIceTypeSchema>;
+  }>;
+};
+
+function hydrateMatrixNode(node: PersistedMatrixNode): HydratedMatrixNode {
+  return {
+    ...node,
+    activeIC: node.activeIC.map((ice) => ({
+      ...ice,
+      type: matrixIceTypeSchema.parse(ice.type),
+    })),
+  };
+}
 
 export class MatrixRepository {
   constructor(private readonly db: PrismaClient) {}
 
-  async findNodeByRoomId(roomId: string) {
-    return this.db.matrixNode.findUnique({
+  async findNodeByRoomId(roomId: string): Promise<HydratedMatrixNode | null> {
+    const node = await this.db.matrixNode.findUnique({
       where: { roomId },
       include: { activeIC: true }
     });
+    return node ? hydrateMatrixNode(node) : null;
   }
 
-  async findNodeById(id: string) {
-    return this.db.matrixNode.findUnique({
+  async findNodeById(id: string): Promise<HydratedMatrixNode | null> {
+    const node = await this.db.matrixNode.findUnique({
       where: { id },
       include: { activeIC: true }
     });
+    return node ? hydrateMatrixNode(node) : null;
   }
 
   async updateNodeAlert(nodeId: string, alertLevel: string) {
     return this.db.matrixNode.update({
       where: { id: nodeId },
       data: { alertLevel }
+    });
+  }
+
+  async escalateInstanceNodes(instanceId: string, alertLevel: 'YELLOW' | 'RED') {
+    const lowerLevels = alertLevel === 'RED' ? ['GREEN', 'YELLOW'] : ['GREEN'];
+    return this.db.matrixNode.updateMany({
+      where: {
+        alertLevel: { in: lowerLevels },
+        room: { missionInstanceId: instanceId },
+      },
+      data: { alertLevel },
     });
   }
 
@@ -59,12 +97,23 @@ export class MatrixRepository {
     });
   }
 
-  async updateCharacterLink(characterId: string, nodeId: string | null, isJackedIn: boolean) {
+  async updateCharacterLink(
+    characterId: string,
+    nodeId: string | null,
+    isJackedIn: boolean,
+    sessionState?: { currentAp: number; recoveryTicks: number; overwatchScore: number },
+  ) {
     return this.db.character.update({
       where: { id: characterId },
       data: {
         activeNodeId: nodeId,
-        isJackedIn
+        isJackedIn,
+        ...(sessionState ? {
+          currentAp: sessionState.currentAp,
+          apRecoveryTicks: sessionState.recoveryTicks,
+          matrixOverwatchScore: sessionState.overwatchScore,
+        } : {}),
+        ...(!isJackedIn ? { matrixOverwatchScore: 0 } : {}),
       }
     });
   }

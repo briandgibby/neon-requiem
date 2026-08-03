@@ -1,7 +1,7 @@
 import { CommandDispatcher, CommandOutput } from '../../src/engine/command-dispatcher';
 import { CommandRegistry } from '../../src/engine/command-registry';
 import { EcsRegistry } from '../../src/engine/ecs/registry';
-import { ComponentTypes, DeckerComponent, PlayerIdComponent } from '../../src/engine/ecs/components';
+import { ComponentTypes, DeckerComponent, PlayerIdComponent, PositionComponent } from '../../src/engine/ecs/components';
 import { MoveHandler } from '../../src/engine/commands/move.handler';
 import { LookHandler } from '../../src/engine/commands/look.handler';
 import { WhoHandler } from '../../src/engine/commands/who.handler';
@@ -14,6 +14,7 @@ import { BruteHandler } from '../../src/engine/commands/brute.handler';
 import { SleazeHandler } from '../../src/engine/commands/sleaze.handler';
 import { DataSpikeHandler } from '../../src/engine/commands/spike.handler';
 import { NavigateHandler } from '../../src/engine/commands/navigate.handler';
+import { encodeCharacterSelector } from '../../src/shared/character-selector';
 
 function buildMocks() {
   const worldService = {
@@ -29,6 +30,7 @@ function buildMocks() {
     getRoomOccupants: jest.fn().mockReturnValue([]),
     emitToRoom: jest.fn(),
     findSocketForCharacter: jest.fn(),
+    findCharacterById: jest.fn(),
     sendToSocket: jest.fn(),
   };
   const matrixService = {
@@ -55,8 +57,8 @@ function buildDispatcher(overrides: Partial<ReturnType<typeof buildMocks>> = {})
   const { worldService, socketHub, matrixService, instanceRepo, ecsRegistry } = mocks;
 
   const registry = new CommandRegistry();
-  registry.register(new MoveHandler(worldService as any, socketHub as any, instanceRepo as any));
-  registry.register(new NavigateHandler(worldService as any, socketHub as any, instanceRepo as any));
+  registry.register(new MoveHandler(worldService as any, socketHub as any, instanceRepo as any, ecsRegistry));
+  registry.register(new NavigateHandler(worldService as any, socketHub as any, instanceRepo as any, ecsRegistry));
   registry.register(new LookHandler(worldService as any, matrixService as any, socketHub as any));
   registry.register(new WhoHandler(socketHub as any));
   registry.register(new SayHandler(socketHub as any));
@@ -141,16 +143,62 @@ describe('CommandDispatcher', () => {
     });
   });
 
+  it('uses stable character ids from tell suggestions', async () => {
+    const { dispatcher, socketHub, output } = buildDispatcher();
+    socketHub.getSelectedClient.mockReturnValue({ characterId: 'char-1', accountId: 'acc-1', characterName: 'Fox', roomId: 'room-1' });
+    socketHub.findCharacterById.mockReturnValue({ socketId: 'socket-target', name: 'Chrome Fox' });
+
+    await dispatcher.dispatch(
+      output,
+      `tell ${encodeCharacterSelector('char-2')} meet at the clinic`,
+    );
+
+    expect(socketHub.findCharacterById).toHaveBeenCalledWith('char-2');
+    expect(socketHub.sendToSocket).toHaveBeenCalledWith('socket-target', 'chat_message', {
+      from: 'Fox',
+      text: 'meet at the clinic',
+      scope: 'tell',
+    });
+    expect(output.emit).toHaveBeenCalledWith('chat_message', {
+      from: 'to Chrome Fox',
+      text: 'meet at the clinic',
+      scope: 'tell',
+    });
+  });
+
+  it('preserves existing character names that begin with @', async () => {
+    const { dispatcher, socketHub, output } = buildDispatcher();
+    socketHub.findSocketForCharacter.mockReturnValue('socket-target');
+
+    await dispatcher.dispatch(output, 'tell @neo hello');
+
+    expect(socketHub.findSocketForCharacter).toHaveBeenCalledWith('@neo');
+    expect(output.emit).toHaveBeenCalledWith('chat_message', {
+      from: 'to @neo',
+      text: 'hello',
+      scope: 'tell',
+    });
+  });
+
   it('handles movement command', async () => {
     const nextRoom = { id: 'room-2', zoneId: 'zone-1', missionInstanceId: null };
-    const { dispatcher, worldService, output } = buildDispatcher();
+    const { dispatcher, ecsRegistry, worldService, output } = buildDispatcher();
     worldService.moveCharacter.mockResolvedValue({ success: true, room: nextRoom });
+    const entityId = ecsRegistry.createEntity();
+    ecsRegistry.addComponent<PlayerIdComponent>(entityId, ComponentTypes.PlayerId, {
+      characterId: 'char-1',
+      accountId: 'acc-1',
+    });
+    ecsRegistry.addComponent<PositionComponent>(entityId, ComponentTypes.Position, {
+      roomId: 'room-1',
+    });
 
     await dispatcher.dispatch(output, 'north');
 
     expect(worldService.moveCharacter).toHaveBeenCalledWith('char-1', 'acc-1', 'north');
     expect(output.emit).toHaveBeenCalledWith('room_data', nextRoom);
     expect(output.emit).toHaveBeenCalledWith('local_pois', []);
+    expect(ecsRegistry.getComponent<PositionComponent>(entityId, ComponentTypes.Position)?.roomId).toBe('room-2');
   });
 
   it('handles multi-word "jack in" normalization', async () => {

@@ -15,6 +15,7 @@ describe('InstanceRepository', () => {
         findUnique: jest.fn().mockResolvedValue(null),
         findFirst: jest.fn().mockResolvedValue(null),
         update: jest.fn().mockResolvedValue({}),
+        updateMany: jest.fn().mockResolvedValue({ count: 0 }),
         findMany: jest.fn().mockResolvedValue([]),
       },
       ...overrides,
@@ -56,81 +57,118 @@ describe('InstanceRepository', () => {
 
   describe('findInstanceByRoomId', () => {
     it('returns null when the room has no missionInstanceId', async () => {
-      const db = makeDb({
-        room: {
-          create: jest.fn(),
-          findUnique: jest.fn().mockResolvedValue({ id: 'r-1', missionInstanceId: null }),
-          updateMany: jest.fn(),
-          deleteMany: jest.fn(),
-        },
-      });
+      const db = makeDb();
+      db.room.findUnique.mockResolvedValue({ id: 'r-1', missionInstanceId: null });
       const repo = new InstanceRepository(db as any);
 
-      const result = await repo.findInstanceByRoomId('r-1');
-
-      expect(result).toBeNull();
+      await expect(repo.findInstanceByRoomId('r-1')).resolves.toBeNull();
     });
 
     it('returns the instance when the room has a missionInstanceId', async () => {
-      const inst = { id: 'inst-1', status: 'PENDING', alertLevel: 'GREEN' };
-      const db = makeDb({
-        room: {
-          create: jest.fn(),
-          findUnique: jest.fn().mockResolvedValue({ id: 'r-1', missionInstanceId: 'inst-1' }),
-          updateMany: jest.fn(),
-          deleteMany: jest.fn(),
-        },
-        missionInstance: {
-          create: jest.fn(),
-          findUnique: jest.fn().mockResolvedValue(inst),
-          findFirst: jest.fn(),
-          update: jest.fn(),
-          findMany: jest.fn(),
-        },
-      });
+      const instance = { id: 'inst-1', status: 'PENDING', alertLevel: 'GREEN' };
+      const db = makeDb();
+      db.room.findUnique.mockResolvedValue({ id: 'r-1', missionInstanceId: 'inst-1' });
+      db.missionInstance.findUnique.mockResolvedValue(instance);
       const repo = new InstanceRepository(db as any);
 
-      const result = await repo.findInstanceByRoomId('r-1');
-
-      expect(result).toEqual(inst);
+      await expect(repo.findInstanceByRoomId('r-1')).resolves.toEqual(instance);
     });
   });
 
-  describe('updateInstanceAlertLevel', () => {
-    it('only escalates — does not downgrade alert level', async () => {
-      const db = makeDb({
-        missionInstance: {
-          create: jest.fn(),
-          findUnique: jest.fn().mockResolvedValue({ id: 'inst-1', alertLevel: 'YELLOW' }),
-          findFirst: jest.fn(),
-          update: jest.fn().mockResolvedValue({}),
-          findMany: jest.fn(),
-        },
-      });
+  describe('instance alert persistence', () => {
+    it('atomically raises an active instance owned by the source room', async () => {
+      const db = makeDb();
+      db.missionInstance.updateMany.mockResolvedValue({ count: 1 });
       const repo = new InstanceRepository(db as any);
 
-      await repo.updateInstanceAlertLevel('inst-1', 'GREEN');
-
-      expect(db.missionInstance.update).not.toHaveBeenCalled();
+      await expect(repo.raiseInstanceAlert('inst-1', 'RED', 'room-9', ['GREEN', 'YELLOW']))
+        .resolves.toBe(true);
+      expect(db.missionInstance.updateMany).toHaveBeenCalledWith({
+        where: {
+          id: 'inst-1',
+          status: 'ACTIVE',
+          alertLevel: { in: ['GREEN', 'YELLOW'] },
+          rooms: { some: { id: 'room-9' } },
+        },
+        data: { alertLevel: 'RED', alertSourceRoomId: 'room-9' },
+      });
     });
 
-    it('escalates when the new level is higher', async () => {
-      const db = makeDb({
-        missionInstance: {
-          create: jest.fn(),
-          findUnique: jest.fn().mockResolvedValue({ id: 'inst-1', alertLevel: 'GREEN' }),
-          findFirst: jest.fn(),
-          update: jest.fn().mockResolvedValue({}),
-          findMany: jest.fn(),
-        },
-      });
+    it('atomically replaces a same-level live source', async () => {
+      const db = makeDb();
+      db.missionInstance.updateMany.mockResolvedValue({ count: 1 });
       const repo = new InstanceRepository(db as any);
 
-      await repo.updateInstanceAlertLevel('inst-1', 'RED');
+      await expect(repo.replaceInstanceAlertSource('inst-1', 'RED', 'room-9')).resolves.toBe(true);
+      expect(db.missionInstance.updateMany).toHaveBeenCalledWith({
+        where: {
+          id: 'inst-1',
+          status: 'ACTIVE',
+          alertLevel: 'RED',
+          OR: [
+            { alertSourceRoomId: null },
+            { alertSourceRoomId: { not: 'room-9' } },
+          ],
+          rooms: { some: { id: 'room-9' } },
+        },
+        data: { alertSourceRoomId: 'room-9' },
+      });
+    });
 
-      expect(db.missionInstance.update).toHaveBeenCalledWith({
-        where: { id: 'inst-1' },
-        data: { alertLevel: 'RED' },
+    it('allows reconciliation to claim only a missing same-level source', async () => {
+      const db = makeDb();
+      db.missionInstance.updateMany.mockResolvedValue({ count: 1 });
+      const repo = new InstanceRepository(db as any);
+
+      await expect(repo.claimInstanceAlertSource('inst-1', 'YELLOW', 'room-9')).resolves.toBe(true);
+      expect(db.missionInstance.updateMany).toHaveBeenCalledWith({
+        where: {
+          id: 'inst-1',
+          status: 'ACTIVE',
+          alertLevel: 'YELLOW',
+          alertSourceRoomId: null,
+          rooms: { some: { id: 'room-9' } },
+        },
+        data: { alertSourceRoomId: 'room-9' },
+      });
+    });
+
+    it('loads the compact alert record owned by a room', async () => {
+      const alert = {
+        id: 'inst-1', status: 'ACTIVE', alertLevel: 'YELLOW', alertSourceRoomId: 'room-2',
+      };
+      const db = makeDb();
+      db.room.findUnique.mockResolvedValue({ missionInstance: alert });
+      const repo = new InstanceRepository(db as any);
+
+      await expect(repo.findInstanceAlertForRoom('room-2')).resolves.toEqual(alert);
+      expect(db.room.findUnique).toHaveBeenCalledWith({
+        where: { id: 'room-2' },
+        select: {
+          missionInstance: {
+            select: { id: true, status: true, alertLevel: true, alertSourceRoomId: true },
+          },
+        },
+      });
+    });
+
+    it('loads raw persisted sources only for active non-GREEN instances', async () => {
+      const rows = [
+        { id: 'inst-1', alertLevel: 'YELLOW', alertSourceRoomId: 'room-2' },
+        { id: 'inst-2', alertLevel: 'RED', alertSourceRoomId: 'room-3' },
+      ];
+      const db = makeDb();
+      db.missionInstance.findMany.mockResolvedValue(rows);
+      const repo = new InstanceRepository(db as any);
+
+      await expect(repo.findActiveInstanceAlerts()).resolves.toEqual(rows);
+      expect(db.missionInstance.findMany).toHaveBeenCalledWith({
+        where: {
+          status: 'ACTIVE',
+          alertLevel: { in: ['YELLOW', 'RED'] },
+          alertSourceRoomId: { not: null },
+        },
+        select: { id: true, alertLevel: true, alertSourceRoomId: true },
       });
     });
   });

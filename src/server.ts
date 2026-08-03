@@ -10,6 +10,8 @@ import { EcsRegistry } from './engine/ecs/registry';
 import { RegenSystem } from './engine/ecs/systems/regen-system';
 import { CombatTickSystem } from './engine/ecs/systems/combat-tick-system';
 import { CombatReinforcementSystem } from './engine/ecs/systems/combat-reinforcement-system';
+import { AlertPatrolSystem } from './engine/ecs/systems/alert-patrol-system';
+import { MobAiSystem } from './engine/ecs/systems/mob-ai-system';
 import { MatrixTickSystem } from './engine/ecs/systems/matrix-tick-system';
 import { IceAiSystem } from './engine/ecs/systems/ice-ai-system';
 import { MissionSystem } from './engine/ecs/systems/mission-system';
@@ -18,6 +20,7 @@ import { InstanceRepository } from './domains/mission/instance.repository';
 import { InstanceCleanupSystem } from './engine/ecs/systems/instance-cleanup-system';
 import { MoveDispatcher } from './engine/ecs/combat/move-dispatcher';
 import { AttackExecutor } from './engine/ecs/combat/moves/attack-executor';
+import { GuardExecutor } from './engine/ecs/combat/moves/guard-executor';
 import { MatrixBruteExecutor } from './engine/ecs/combat/moves/matrix-brute-executor';
 import { MatrixSleazeExecutor } from './engine/ecs/combat/moves/matrix-sleaze-executor';
 import { MatrixDataSpikeExecutor } from './engine/ecs/combat/moves/matrix-data-spike-executor';
@@ -25,8 +28,10 @@ import { SecurityPatrol } from './engine/security-patrol';
 import { RoomPresence } from './engine/room-presence';
 import { PlayerSyncCoordinator } from './engine/player-sync-coordinator';
 import { SocketHub } from './engine/socket-hub';
+import { RoomEventPublisher } from './engine/room-event-publisher';
 import { CommandDispatcher } from './engine/command-dispatcher';
 import { CommandRegistry } from './engine/command-registry';
+import { registerCommandRoutes } from './engine/command.routes';
 import { MoveHandler } from './engine/commands/move.handler';
 import { NavigateHandler } from './engine/commands/navigate.handler';
 import { LookHandler } from './engine/commands/look.handler';
@@ -47,6 +52,8 @@ import { CharacterService } from './domains/character/character.service';
 import { registerCharacterRoutes } from './domains/character/character.routes';
 import { WorldRepository } from './domains/world/world.repository';
 import { WorldService } from './domains/world/world.service';
+import { PatrolDefinitionRepository } from './domains/world/patrol-definition.repository';
+import { PatrolBootstrap } from './engine/patrol-bootstrap';
 import { registerWorldRoutes } from './domains/world/world.routes';
 import { CombatRepository } from './domains/combat/combat.repository';
 import { MobRepository } from './domains/combat/mob.repository';
@@ -59,12 +66,16 @@ import { MatrixService } from './domains/matrix/matrix.service';
 import { registerMatrixRoutes } from './domains/matrix/matrix.routes';
 import { MissionRepository } from './domains/mission/mission.repository';
 import { MissionService } from './domains/mission/mission.service';
+import { InstanceAlertService } from './domains/mission/instance-alert.service';
 import { MissionGenerator } from './domains/mission/mission.generator';
 import { registerMissionRoutes } from './domains/mission/mission.routes';
 import { ShopRepository } from './domains/shop/shop.repository';
 import { ShopService } from './domains/shop/shop.service';
 import { registerShopRoutes } from './domains/shop/shop.routes';
 import { AuditLogger } from './engine/audit-logger';
+import { SnapshotHistoryRepository } from './domains/admin/snapshot-history.repository';
+import { SnapshotHistoryService } from './domains/admin/snapshot-history.service';
+import { registerSnapshotHistoryRoutes } from './domains/admin/snapshot-history.routes';
 import type { Socket } from 'socket.io';
 import type { AuthPayload } from './shared/types';
 import type { JwtSigner } from './domains/auth/auth.types';
@@ -97,7 +108,9 @@ async function bootstrap() {
   const db = new PrismaClient({ adapter });
   const app = Fastify({ logger: true });
 
-  await app.register(import('@fastify/cors'));
+  await app.register(import('@fastify/cors'), {
+    methods: ['GET', 'HEAD', 'POST', 'PATCH'],
+  });
 
   const jwtSigner: JwtSigner = {
     sign: (payload: AuthPayload): string => {
@@ -116,6 +129,7 @@ async function bootstrap() {
 
   const moveDispatcher = new MoveDispatcher();
   moveDispatcher.register(new AttackExecutor());
+  moveDispatcher.register(new GuardExecutor());
   moveDispatcher.register(new MatrixBruteExecutor());
   moveDispatcher.register(new MatrixSleazeExecutor());
   moveDispatcher.register(new MatrixDataSpikeExecutor());
@@ -130,18 +144,23 @@ async function bootstrap() {
   const charService = new CharacterService(charRepo, worldRepo);
   registerCharacterRoutes(app, charService, authService);
 
+  const snapshotHistory = new SnapshotHistoryService(new SnapshotHistoryRepository(db));
+  registerSnapshotHistoryRoutes(app, snapshotHistory, authService);
+
   const worldService = new WorldService(worldRepo, charRepo, roomPresence);
   registerWorldRoutes(app, worldService, authService);
 
   const matrixRepo = new MatrixRepository(db);
   const missionRepo = new MissionRepository(db);
   const instanceRepo = new InstanceRepository(db);
+  const instanceAlerts = new InstanceAlertService(instanceRepo);
   let missionService!: MissionService;
   const matrixService = new MatrixService(
     matrixRepo,
     ecsRegistry,
     moveDispatcher,
     async (roomId, nodeEntityId) => missionService.wireNodeToMissionTargets(roomId, nodeEntityId),
+    instanceAlerts,
   );
   registerMatrixRoutes(app, matrixService, authService);
 
@@ -154,12 +173,14 @@ async function bootstrap() {
     combatRepo, 
     charRepo, 
     worldRepo, 
+    worldService,
     mobRepo, 
     magicService, 
     matrixService,
     ecsRegistry,
     moveDispatcher,
-    syncCoordinator
+    syncCoordinator,
+    instanceAlerts,
   );
   registerCombatRoutes(app, combatService, authService);
 
@@ -174,23 +195,31 @@ async function bootstrap() {
   const shopService = new ShopService(shopRepo, worldRepo, charRepo);
   registerShopRoutes(app, shopService, authService);
 
+  const patrolDefinitions = new PatrolDefinitionRepository(db);
+  await new PatrolBootstrap(ecsRegistry, patrolDefinitions, worldService, combatService, app.log).load();
+
+  const socketHub = new SocketHub(app.server, authService, roomPresence, syncCoordinator);
+  const roomEvents: RoomEventPublisher = {
+    publish: (roomId, event) => socketHub.emitToRoom(roomId, 'message', event),
+  };
+
   // Register Heartbeat subscribers
   heartbeat.subscribe(combatService);
   heartbeat.subscribe(new SecurityPatrol(db, combatService, app.log));
   heartbeat.subscribe(new RegenSystem(ecsRegistry));
   heartbeat.subscribe(new CombatTickSystem(ecsRegistry));
-  heartbeat.subscribe(new CombatReinforcementSystem(ecsRegistry, mobRepo));
-  heartbeat.subscribe(new MatrixTickSystem(ecsRegistry, matrixRepo, instanceRepo));
+  heartbeat.subscribe(new CombatReinforcementSystem(ecsRegistry, combatService, worldService));
+  heartbeat.subscribe(new AlertPatrolSystem(ecsRegistry, worldService, app.log, instanceAlerts, roomEvents));
+  heartbeat.subscribe(new MobAiSystem(ecsRegistry, moveDispatcher, worldService, roomEvents));
+  heartbeat.subscribe(new MatrixTickSystem(ecsRegistry, matrixRepo, instanceAlerts));
   heartbeat.subscribe(new IceAiSystem(ecsRegistry));
   heartbeat.subscribe(new MissionSystem(ecsRegistry, (missionId, index) => missionService.updateObjectiveProgress(missionId, index)));
   heartbeat.subscribe(new EntityCleanupSystem(ecsRegistry));
   heartbeat.subscribe(new InstanceCleanupSystem(ecsRegistry, instanceRepo));
 
-  const socketHub = new SocketHub(app.server, authService, roomPresence, syncCoordinator);
-
   const commandRegistry = new CommandRegistry();
-  commandRegistry.register(new MoveHandler(worldService, socketHub, instanceRepo));
-  commandRegistry.register(new NavigateHandler(worldService, socketHub, instanceRepo));
+  commandRegistry.register(new MoveHandler(worldService, socketHub, instanceRepo, ecsRegistry));
+  commandRegistry.register(new NavigateHandler(worldService, socketHub, instanceRepo, ecsRegistry));
   commandRegistry.register(new LookHandler(worldService, matrixService, socketHub));
   commandRegistry.register(new WhoHandler(socketHub));
   commandRegistry.register(new SayHandler(socketHub));
@@ -201,36 +230,73 @@ async function bootstrap() {
   commandRegistry.register(new SleazeHandler(matrixService));
   commandRegistry.register(new DataSpikeHandler(matrixService));
   commandRegistry.register(new HelpHandler(commandRegistry));
+  registerCommandRoutes(app, commandRegistry, authService);
 
   const commandDispatcher = new CommandDispatcher(commandRegistry, socketHub, ecsRegistry);
 
   socketHub.onConnection(async (socket) => {
     const accountId = socket.data.accountId;
+    let selectionInProgress = false;
 
-    socket.on('select_character', async (data: { characterId: string }) => {
-      try {
-        const character = await charService.getCharacter(data.characterId, accountId);
+    socket.on('select_character', (data: { characterId: string }) => {
+      if (selectionInProgress || socket.data.characterId) return;
+      const signal = socketHub.getSessionSignal(socket);
+      if (!signal) return;
+      selectionInProgress = true;
 
-        socket.data.characterId = character.id;
+      void (async () => {
+        try {
+          await charService.getCharacter(data.characterId, accountId);
+          if (signal.aborted) return;
+          await syncCoordinator.waitForPlayerDisconnect(data.characterId);
+          if (signal.aborted) return;
+          const character = await charService.getCharacter(data.characterId, accountId);
+          if (signal.aborted) return;
 
-        // Send initial room data and establish room presence.
-        if (character.currentRoomId) {
-          const room = await worldService.getRoom(character.currentRoomId) as any;
-          socketHub.selectCharacter(socket, {
-            characterId: character.id,
-            characterName: character.name,
-            roomId: room.id,
-          });
-          room.occupants = socketHub.getRoomOccupants(room.id).filter(o => o.characterId !== character.id);
-          socket.emit('room_data', room);
-          const pois = await worldService.getPOIs(room.zoneId);
-          socket.emit('local_pois', pois);
+          let room: any = null;
+          let pois: Awaited<ReturnType<WorldService['getPOIs']>> = [];
+          if (character.currentRoomId) {
+            room = await worldService.getRoom(character.currentRoomId);
+            if (signal.aborted) return;
+            pois = await worldService.getPOIs(room.zoneId);
+            if (signal.aborted) return;
+          }
+
+          const activeNode = await matrixService.restoreSession(character.id, accountId, signal);
+          if (signal.aborted) return;
+
+          // Publish the selection only after all fallible reads and restoration complete.
+          socket.data.characterId = character.id;
+          if (room) {
+            socketHub.selectCharacter(socket, {
+              characterId: character.id,
+              characterName: character.name,
+              roomId: room.id,
+            });
+            room.occupants = socketHub.getRoomOccupants(room.id).filter(o => o.characterId !== character.id);
+            socket.emit('room_data', room);
+            socket.emit('local_pois', pois);
+          }
+
+          socket.emit('matrix_data', activeNode);
+          socket.emit('message', { text: `Welcome back, ${character.name}. Neural link established.`, type: 'success' });
+        } catch (err) {
+          if (!signal.aborted) {
+            const selectedCharacterId = socket.data.characterId as string | undefined;
+            if (selectedCharacterId) {
+              try {
+                await syncCoordinator.handlePlayerDisconnect(selectedCharacterId);
+              } catch (syncError) {
+                app.log.error({ err: syncError }, 'Failed to roll back character selection');
+              }
+              socketHub.clearSelectedCharacter(socket);
+            }
+            socket.emit('message', { text: 'Failed to select character.', type: 'error' });
+          }
+        } finally {
+          selectionInProgress = false;
         }
-
-        socket.emit('message', { text: `Welcome back, ${character.name}. Neural link established.`, type: 'success' });
-      } catch (err) {
-        socket.emit('message', { text: 'Failed to select character.', type: 'error' });
-      }
+      })();
     });
 
     socket.on('command', async (data: { text: string }) => {

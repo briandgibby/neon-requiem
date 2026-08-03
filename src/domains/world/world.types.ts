@@ -20,6 +20,7 @@ export interface RoomRecord {
   isSafeZone: boolean;
   safeZoneOverrideActive: boolean;
   missionInstanceId: string | null;
+  zone?: ZoneRecord;
 }
 
 export interface ZoneRecord {
@@ -33,4 +34,23 @@ export interface MovementResult {
   success: boolean;
   error?: string;
   room?: RoomRecord;
+}
+
+export interface SafeZonePolicy {
+  isEffectiveSafeZone(roomId: string): Promise<boolean>;
+}
+
+export type RoomExitMap = Partial<Record<Direction, string>>;
+
+export interface RoomLookup {
+  getRoom(slugOrId: string): Promise<
+    Pick<RoomRecord, 'id' | 'slug' | 'factionOwner'>
+    & { exits: RoomExitMap | null; missionInstanceId?: string | null }
+  >;
+}
+
+export function isEffectiveSafeZone(
+  room: Pick<RoomRecord, 'isSafeZone' | 'safeZoneOverrideActive'>,
+): boolean {
+  return room.isSafeZone && !room.safeZoneOverrideActive;
 }

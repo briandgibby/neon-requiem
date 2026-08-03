@@ -1,10 +1,11 @@
 import { CombatRepository } from './combat.repository';
 import { CharacterRepository } from '../character/character.repository';
 import { WorldRepository } from '../world/world.repository';
+import { SafeZonePolicy } from '../world/world.types';
 import { MobRepository } from './mob.repository';
 import { MagicService } from '../magic/magic.service';
 import { MatrixService } from '../matrix/matrix.service';
-import { MoveInput } from './combat.types';
+import { MobTemplateRecord, MoveInput, SecurityAlarmResult } from './combat.types';
 import { 
   MAX_AP, 
 } from '../../shared/constants';
@@ -22,6 +23,7 @@ import {
 import { PlayerEntityFactory } from '../../engine/ecs/factories/player-entity-factory';
 
 import { PlayerSyncCoordinator } from '../../engine/player-sync-coordinator';
+import type { InstanceAlertAuthority } from '../mission/instance-alert.service';
 
 export class CombatService implements Tickable {
   readonly name = 'CombatService';
@@ -31,12 +33,14 @@ export class CombatService implements Tickable {
     private readonly combatRepo: CombatRepository,
     private readonly charRepo: CharacterRepository,
     private readonly worldRepo: WorldRepository,
+    private readonly safeZonePolicy: SafeZonePolicy,
     private readonly mobRepo: MobRepository,
     private readonly magicService: MagicService,
     private readonly matrixService: MatrixService,
     private readonly ecsRegistry: EcsRegistry,
     private readonly moveDispatcher: MoveDispatcher,
     private readonly syncCoordinator: PlayerSyncCoordinator,
+    private readonly instanceAlerts?: InstanceAlertAuthority,
   ) {}
 
   async onTick(_tickCount: number): Promise<void> {
@@ -45,6 +49,10 @@ export class CombatService implements Tickable {
     if (_tickCount % 20 === 0) {
       await this.syncCoordinator.syncAllPlayers();
     }
+  }
+
+  getMobTemplate(id: string): Promise<MobTemplateRecord | null> {
+    return this.mobRepo.findById(id);
   }
 
   async getOrCreateEcsSession(roomId: string): Promise<string> {
@@ -69,7 +77,11 @@ export class CombatService implements Tickable {
     return sessionId;
   }
 
-  async triggerSecurityAlarm(roomId: string): Promise<void> {
+  async triggerSecurityAlarm(roomId: string): Promise<SecurityAlarmResult> {
+    if (await this.safeZonePolicy.isEffectiveSafeZone(roomId)) {
+      return { triggered: false, reason: 'safe_zone' };
+    }
+
     const sessionId = await this.getOrCreateEcsSession(roomId);
     const session = this.ecsRegistry.getComponent<CombatSessionComponent>(
       sessionId,
@@ -81,6 +93,24 @@ export class CombatService implements Tickable {
     session.alarmState = 'RED';
     session.backupCalled = true;
     session.turnsUntilReinforcements = 1;
+
+    if (this.instanceAlerts) {
+      try {
+        await this.instanceAlerts.escalateAlertFromRoom(roomId, 'RED');
+      } catch (_err) {
+        // AlertPatrolSystem retries non-GREEN CombatSessions on each tick.
+      }
+    }
+
+    return { triggered: true };
+  }
+
+  async findMobTemplateBySlug(slug: string): Promise<MobTemplateRecord | null> {
+    return this.mobRepo.findBySlug(slug);
+  }
+
+  async findEliteMobTemplateByCorporation(corporationId: string): Promise<MobTemplateRecord | null> {
+    return this.mobRepo.findEliteByCorporation(corporationId);
   }
 
   async joinCombat(characterId: string, accountId: string, roomId: string): Promise<void> {
@@ -104,14 +134,14 @@ export class CombatService implements Tickable {
     entityId = PlayerEntityFactory.createFromRecord(this.ecsRegistry, character, roomId);
 
     this.ecsRegistry.addComponent<ApComponent>(entityId, ComponentTypes.Ap, {
-      current: MAX_AP,
+      current: character.currentAp,
       max: MAX_AP,
       lastRegenAt: Date.now(),
-      recoveryTicks: 0,
+      recoveryTicks: character.currentAp <= 0 ? Math.max(1, character.apRecoveryTicks) : 0,
     });
 
     this.ecsRegistry.addComponent<CombatStatusComponent>(entityId, ComponentTypes.CombatStatus, {
-      state: 'engaged',
+      state: character.currentAp <= 0 ? 'recovering' : 'engaged',
       isPetActive: false,
       sessionId,
     });

@@ -8,7 +8,8 @@ import { CharacterRepository } from '../character/character.repository';
 import { WorldRepository } from '../world/world.repository';
 import { EcsRegistry } from '../../engine/ecs/registry';
 import { ComponentTypes, MissionTargetComponent } from '../../engine/ecs/components';
-import { MobRepository, MobTemplateRecord } from '../combat/mob.repository';
+import { MobRepository } from '../combat/mob.repository';
+import { MobTemplateRecord } from '../combat/combat.types';
 import { MobFactory } from '../../engine/ecs/factories/mob-factory';
 import { InstanceRepository } from './instance.repository';
 import { MatrixService } from '../matrix/matrix.service';
@@ -62,7 +63,8 @@ export class MissionService {
       const entityId = MobFactory.createFromTemplate(
         this.ecsRegistry,
         template as MobTemplateRecord,
-        room.id
+        room.id,
+        'hostile'
       );
 
       this.ecsRegistry.addComponent<MissionTargetComponent>(entityId, ComponentTypes.MissionTarget, {
