@@ -1,14 +1,24 @@
 # Neon Requiem - Project Handoff
 
-**Date:** 2026-08-02
-**Session focus:** All tracked Phase 4.4 follow-ons implemented and verified.
+**Date:** 2026-08-03
+**Session focus:** Playable mission progression loop merged and verified; Street Doc field medicine is next.
 
 ---
 
 ## 1. Current Verified State
 
 - Git branch: `main`.
+- Latest merge: PR #2, `feat: add playable mission progression loop`, merge commit `bca5aa7`.
 - Node version: `v22.x` required.
+- Latest verification (2026-08-03):
+  - Backend PostgreSQL-enabled suite: **52 suites / 321 tests** pass.
+  - `npm run build`: passes.
+  - `cd client; npm run lint`: passes.
+  - `cd client; npm run build`: passes.
+  - GitHub CI: backend and client jobs pass on merge commit `bca5aa7`.
+  - In-app browser smoke passes: create persona → accept `redmond-wetwork` → deploy → traverse the instance → defeat the mission target with live HP/AP and AP recovery → observe `[x]` objective completion → exfil to The Pit for the `3000¥` payout.
+- Known runtime limitation found during smoke testing:
+  - Restarting the backend during an active mission does not rehydrate its transient ECS mission targets. Uninterrupted mission play is verified; restart recovery remains a follow-on.
 - Backend builds and tests pass:
   ```powershell
   npm run build
@@ -21,7 +31,7 @@
   - `cd client; npm exec -- tsc -b`: passes.
   - `cd client; npm run build`: passes under Node `v22.22.2` after reinstalling frontend dependencies with optional native packages.
   - `cd client; npm run lint`: passes with no rule suppressions (verified 2026-08-02).
-  - Latest full backend regression run: **41 suites / 284 tests** pass (verified 2026-08-02).
+  - Previous full backend regression run: **41 suites / 284 tests** pass (verified 2026-08-02).
 - Environment setup update:
   - Node `v22.22.2` is installed, but this Codex shell still resolves `node` through `fnm` to `v20.20.2` unless Node 22 is forced into `PATH`.
   - Verified command prefix in this session: `PATH=/home/bdgibby/.local/share/fnm/node-versions/v22.22.2/installation/bin:$PATH`.
@@ -451,16 +461,23 @@ The project has moved from a shallow procedural model to a **Deep Module** archi
    - Mission alert propagation and persisted patrol loading now cross explicit service boundaries; the World domain exposes template IDs and the Combat domain resolves the owned mob records.
    - Added overlap regressions for disconnect waiting, canceled session restoration, concurrent Matrix-node creation, and missing patrol templates.
 
+32. **Playable Mission Progression Loop (COMPLETE, 2026-08-03, merged in PR #2):**
+   - Connected mission listing/acceptance, instance deployment, traversal, physical combat objectives, shopping, mission completion, payout, and exfiltration through the normal command and picker surfaces.
+   - Added `PlayerRuntime` and shared synchronization seams so persisted character location and ECS state remain aligned during the loop.
+   - Added live `character_update` output for player damage, action-point spend, and action-point recovery; the client now renders the real AP pool instead of a fixed `6/6` display.
+   - Added a balanced `mission-defector` seed target and made assassination generation use it.
+   - Prevented incapacitated actors from acting, prevented zero-HP health regeneration, and delayed mission-target cleanup until objective progress is committed.
+   - Added workflow, command, service, ECS, and PostgreSQL-backed integration coverage plus backend/client GitHub Actions checks.
+   - Browser verification completed the full loop and received the `3000¥` payout.
+   - Planned follow-on: `docs/superpowers/plans/2026-08-03-street-doc-field-medicine.md`.
+
 ---
 
-## 4. Immediate Next Steps (Phase 4.4+)
+## 4. Immediate Next Steps
 
-**Phase 4.4A through 4.4E and the Redmond Barrens content slice are complete locally.**
-
-There are no remaining Phase 4.4 follow-ons in the tracked implementation plans.
-
-**Remaining carry-forward items:**
-- None.
+1. Implement the Street Doc field-medicine tracer bullet in `docs/superpowers/plans/2026-08-03-street-doc-field-medicine.md`.
+2. Preserve the planned boundaries: owned Street Doc actor, same-room player target, Tech-supply or Magic-mana spend, atomic persistence/audit, ECS synchronization, `treat <ally>` command/picker support, and reconnect verification.
+3. Follow up on active-mission restart recovery by rehydrating persisted mission targets into ECS after backend restart or reconnect.
 
 
 ---
