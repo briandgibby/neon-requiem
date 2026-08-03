@@ -1,8 +1,9 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useCallback, useEffect, useState, useRef } from 'react';
 import { Terminal } from '../components/Terminal';
 import type { TerminalHandle } from '../components/Terminal';
 import { CommandPicker } from '../components/CommandPicker';
 import type { CommandMetadata } from '../components/CommandPicker';
+import type { CommandArgumentSource } from '../lib/command-picker';
 import { Shield, Activity, Map as MapIcon, Terminal as TerminalIcon } from 'lucide-react';
 import { useSocket } from '../hooks/useSocket';
 import { useHotkeys } from '../hooks/useHotkeys';
@@ -112,6 +113,11 @@ export const GameView: React.FC<GameViewProps> = ({ token, character, onLogout }
   const currentAp = charData.currentAp ?? 6;
   const maxAp = charData.maxAp ?? 6;
   const terminalRef = useRef<TerminalHandle>(null);
+  const requestCommandArguments = useCallback((source: CommandArgumentSource) => {
+    if (source === 'hostile' || source === 'ally' || source === 'injured-ally') {
+      socket?.emit('request_combat_targets');
+    }
+  }, [socket]);
   const {
     hotkeys,
     isSavingHotkey,
@@ -252,6 +258,7 @@ export const GameView: React.FC<GameViewProps> = ({ token, character, onLogout }
     socket.on('room_data', (data: RoomData) => {
       setRoomData(data);
       setCombatTargets({ hostiles: [], allies: [] });
+      socket.emit('request_combat_targets');
       if (data.poiCategory !== 'SHOP') setShopItems([]);
       if (terminalRef.current) {
         terminalRef.current.writeln(`\r\n\x1b[1;36m[ ${data.name} ]\x1b[0m`);
@@ -287,10 +294,16 @@ export const GameView: React.FC<GameViewProps> = ({ token, character, onLogout }
 
     socket.on('player_entered', (data: RoomOccupant) => {
       terminalRef.current?.writeln(`\x1b[32m${data.name} enters the room.\x1b[0m`);
+      socket.emit('request_combat_targets');
     });
 
     socket.on('player_left', (data: RoomOccupant) => {
       terminalRef.current?.writeln(`\x1b[33m${data.name} leaves the room.\x1b[0m`);
+      socket.emit('request_combat_targets');
+    });
+
+    socket.on('combat_targets_invalidated', () => {
+      socket.emit('request_combat_targets');
     });
 
     socket.on('chat_message', (data: ChatMessage) => {
@@ -320,6 +333,7 @@ export const GameView: React.FC<GameViewProps> = ({ token, character, onLogout }
       socket.off('player_left');
       socket.off('chat_message');
       socket.off('combat_targets');
+      socket.off('combat_targets_invalidated');
       socket.off('shop_items');
     };
   }, [socket, character.id]);
@@ -553,6 +567,12 @@ export const GameView: React.FC<GameViewProps> = ({ token, character, onLogout }
                 value: target.id,
                 label: `${target.name} (${target.currentHp}/${target.maxHp})`,
               })),
+              'injured-ally': combatTargets.allies
+                .filter((target) => target.currentHp < target.maxHp)
+                .map((target) => ({
+                  value: target.id,
+                  label: `${target.name} (${target.currentHp}/${target.maxHp})`,
+                })),
               mission: missionTemplates.map((mission) => ({
                 value: mission.slug,
                 label: `${mission.name} (${mission.basePayout}¥)`,
@@ -574,6 +594,7 @@ export const GameView: React.FC<GameViewProps> = ({ token, character, onLogout }
             }}
             isMatrixMode={charData.isJackedIn}
             onCommand={dispatchCommand}
+            onArgumentSourceSelected={requestCommandArguments}
             onSaveHotkey={saveHotkey}
             onRemoveHotkey={removeHotkey}
             isSavingHotkey={isSavingHotkey}

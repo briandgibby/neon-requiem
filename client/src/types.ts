@@ -12,6 +12,8 @@ export interface Character {
   maxStun?: number;
   currentAp?: number;
   maxAp?: number;
+  currentMana?: number;
+  maxMana?: number;
   armorValue: number;
   isJackedIn?: boolean;
   areaKnowledge?: string[];

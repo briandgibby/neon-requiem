@@ -56,6 +56,7 @@ import {
   MissionStatusHandler,
 } from './engine/commands/mission.handlers';
 import { BuyItemHandler, ShopListHandler } from './engine/commands/shop.handlers';
+import { TreatHandler } from './engine/commands/treat.handler';
 import { AuthRepository } from './domains/auth/auth.repository';
 import { AuthService } from './domains/auth/auth.service';
 import { registerAuthRoutes } from './domains/auth/auth.routes';
@@ -84,6 +85,8 @@ import { registerMissionRoutes } from './domains/mission/mission.routes';
 import { ShopRepository } from './domains/shop/shop.repository';
 import { ShopService } from './domains/shop/shop.service';
 import { registerShopRoutes } from './domains/shop/shop.routes';
+import { MedicalRepository } from './domains/medical/medical.repository';
+import { MedicalService } from './domains/medical/medical.service';
 import { AuditLogger } from './engine/audit-logger';
 import { SnapshotHistoryRepository } from './domains/admin/snapshot-history.repository';
 import { SnapshotHistoryService } from './domains/admin/snapshot-history.service';
@@ -210,6 +213,8 @@ async function bootstrap() {
   const shopService = new ShopService(shopRepo, worldRepo);
   registerShopRoutes(app, shopService, authService);
 
+  const medicalService = new MedicalService(new MedicalRepository(db), ecsRegistry, playerRuntime);
+
   const patrolDefinitions = new PatrolDefinitionRepository(db);
   await new PatrolBootstrap(ecsRegistry, patrolDefinitions, worldService, combatService, app.log).load();
 
@@ -220,7 +225,12 @@ async function bootstrap() {
   const characterUpdates: CharacterUpdatePublisher = {
     publish: (characterId, update) => {
       const client = socketHub.findCharacterById(characterId);
-      if (client) socketHub.sendToSocket(client.socketId, 'character_update', update);
+      if (client) {
+        socketHub.sendToSocket(client.socketId, 'character_update', update);
+        if (update.currentHp !== undefined) {
+          socketHub.emitToRoom(client.roomId, 'combat_targets_invalidated', undefined);
+        }
+      }
     },
   };
 
@@ -259,6 +269,7 @@ async function bootstrap() {
   commandRegistry.register(new ExfilMissionHandler(missionService, worldService, socketHub, playerRuntime));
   commandRegistry.register(new ShopListHandler(shopService));
   commandRegistry.register(new BuyItemHandler(shopService));
+  commandRegistry.register(new TreatHandler(medicalService, combatService, roomEvents, characterUpdates));
   commandRegistry.register(new HelpHandler(commandRegistry));
   registerCommandRoutes(app, commandRegistry, authService);
 
@@ -328,6 +339,15 @@ async function bootstrap() {
           selectionInProgress = false;
         }
       })();
+    });
+
+    socket.on('request_combat_targets', () => {
+      const selected = socketHub.getSelectedClient(socket);
+      if (!selected) return;
+
+      void combatService.listTargets(selected.characterId, selected.accountId)
+        .then((targets) => socket.emit('combat_targets', targets))
+        .catch(() => socket.emit('combat_targets', { hostiles: [], allies: [] }));
     });
 
     socket.on('command', async (data: { text: string }) => {
