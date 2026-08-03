@@ -16,9 +16,9 @@ import {
   CombatStatusComponent,
   PositionComponent,
 } from '../../engine/ecs/components';
-import { PlayerEntityFactory } from '../../engine/ecs/factories/player-entity-factory';
 import { MAX_AP } from '../../shared/constants';
 import type { InstanceAlertAuthority } from '../mission/instance-alert.service';
+import { PlayerRuntime } from '../../engine/player-runtime';
 
 type NodeCreatedCallback = (roomId: string, nodeEntityId: string) => Promise<void>;
 type MatrixCharacterRecord = NonNullable<Awaited<ReturnType<MatrixRepository['getCharacterWithEquipment']>>>;
@@ -43,13 +43,18 @@ interface MatrixNodeView {
 }
 
 export class MatrixService {
+  private readonly playerRuntime: PlayerRuntime;
+
   constructor(
     private readonly matrixRepo: MatrixRepository,
     private readonly ecsRegistry: EcsRegistry,
     private readonly moveDispatcher: MoveDispatcher,
     private readonly onNodeCreated?: NodeCreatedCallback,
     private readonly instanceAlerts?: InstanceAlertAuthority,
-  ) {}
+    playerRuntime?: PlayerRuntime,
+  ) {
+    this.playerRuntime = playerRuntime ?? new PlayerRuntime(ecsRegistry);
+  }
 
   private async persistNodeAlert(node: MatrixNodeComponent): Promise<void> {
     try {
@@ -197,17 +202,7 @@ export class MatrixService {
       buffer = Math.max(buffer, deckStats?.biofeedbackBuffer || 0);
     }
 
-    let entityId = this.ecsRegistry.getEntityByComponent<PlayerIdComponent>(
-      ComponentTypes.PlayerId,
-      (player) => player.characterId === character.id,
-    );
-    if (!entityId) {
-      entityId = PlayerEntityFactory.createFromRecord(this.ecsRegistry, character, physicalRoomId);
-    } else {
-      const position = this.ecsRegistry.getComponent<PositionComponent>(entityId, ComponentTypes.Position);
-      if (position) position.roomId = physicalRoomId;
-      else this.ecsRegistry.addComponent<PositionComponent>(entityId, ComponentTypes.Position, { roomId: physicalRoomId });
-    }
+    const entityId = this.playerRuntime.loadCharacter(character, physicalRoomId);
 
     this.ecsRegistry.addComponent<DeckerComponent>(entityId, ComponentTypes.Decker, {
       activeNodeEntityId: nodeEntityId,

@@ -7,6 +7,7 @@ describe('InstanceRepository', () => {
       room: {
         create: jest.fn().mockImplementation((args) => Promise.resolve({ id: `room-${Math.random()}`, ...args.data })),
         findUnique: jest.fn().mockResolvedValue(null),
+        update: jest.fn().mockImplementation((args) => Promise.resolve(args.data)),
         updateMany: jest.fn().mockResolvedValue({ count: 0 }),
         deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
       },
@@ -52,6 +53,22 @@ describe('InstanceRepository', () => {
       }));
       expect(db.room.create).toHaveBeenCalledTimes(2);
       expect(rooms).toHaveLength(2);
+    });
+
+    it('connects generated Mission Instance rooms into a traversable route', async () => {
+      const db = makeDb();
+      const repo = new InstanceRepository(db as any);
+
+      const rooms = await repo.createInstanceRooms('inst-1', ['office-a', 'server-room']);
+
+      expect(db.room.update).toHaveBeenNthCalledWith(1, {
+        where: { id: rooms[0].id },
+        data: { exits: { east: rooms[1].slug } },
+      });
+      expect(db.room.update).toHaveBeenNthCalledWith(2, {
+        where: { id: rooms[1].id },
+        data: { exits: { west: rooms[0].slug } },
+      });
     });
   });
 

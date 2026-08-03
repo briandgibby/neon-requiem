@@ -1,5 +1,5 @@
 import { EcsRegistry, EntityId } from '../registry';
-import { ComponentTypes, ApComponent, CombatStatusComponent } from '../components';
+import { ComponentTypes, ApComponent, CombatStatusComponent, HealthComponent } from '../components';
 import { CombatMove } from '../../../shared/types';
 import { ValidationError } from '../../../shared/errors';
 
@@ -57,9 +57,14 @@ export class MoveDispatcher {
   private performCoreValidations(actorId: EntityId, executor: MoveExecutor, registry: EcsRegistry): void {
     const status = registry.getComponent<CombatStatusComponent>(actorId, ComponentTypes.CombatStatus);
     const ap = registry.getComponent<ApComponent>(actorId, ComponentTypes.Ap);
+    const health = registry.getComponent<HealthComponent>(actorId, ComponentTypes.Health);
 
     if (!status || !ap) {
       throw new ValidationError('Entity is not in a combat-ready state.');
+    }
+
+    if (health && health.current <= 0) {
+      throw new ValidationError('Incapacitated entities cannot act.');
     }
 
     if (status.state === 'recovering' && executor.type !== 'consume') {
@@ -77,7 +82,7 @@ export class MoveDispatcher {
     
     if (ap) {
       ap.current -= executor.apCost;
-      if (ap.current <= 0 && status) {
+      if (ap.current < executor.apCost && status) {
         status.state = 'recovering';
         // Recovery ticks logic can stay here or move to a system
         ap.recoveryTicks = 5; 

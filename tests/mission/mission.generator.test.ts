@@ -43,4 +43,16 @@ describe('MissionGenerator', () => {
 
     expect(result.nodeTargetData).toEqual([]);
   });
+
+  it('uses the street-level defector template for assassination targets', () => {
+    const template = { id: 'tmpl-3', type: 'ASSASSINATION', baseDifficulty: 2, name: 'Wetwork' } as any;
+    const result = gen.generate(template, 'seed-wetwork', []);
+
+    expect(result.spawnData).toEqual([
+      expect.objectContaining({
+        templateSlug: 'mission-defector',
+        isTarget: true,
+      }),
+    ]);
+  });
 });

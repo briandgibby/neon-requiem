@@ -207,6 +207,30 @@ describe('MobAiSystem', () => {
     });
   });
 
+  it('publishes updated health to the player hit by an autonomous attack', async () => {
+    jest.spyOn(Math, 'random').mockReturnValue(0.99);
+    const registry = new EcsRegistry();
+    const roomEvents = { publish: jest.fn() };
+    const characterUpdates = { publish: jest.fn() };
+    const system = new (MobAiSystem as any)(
+      registry,
+      createDispatcher(),
+      createWorldPolicy(),
+      roomEvents,
+      characterUpdates,
+    );
+    const playerId = addPhysicalPlayer(registry, 'room-1');
+    addHostileMob(registry, 'room-1');
+
+    await system.onTick(1);
+
+    const health = registry.getComponent<HealthComponent>(playerId, ComponentTypes.Health);
+    expect(characterUpdates.publish).toHaveBeenCalledWith(playerId, {
+      currentHp: health?.current,
+      maxHp: 100,
+    });
+  });
+
   it('does not interrupt an autonomous attack when room output fails', async () => {
     jest.spyOn(Math, 'random').mockReturnValue(0.99);
     const registry = new EcsRegistry();
@@ -348,8 +372,10 @@ describe('MobAiSystem', () => {
     const healthAfterFirstAttack = registry.getComponent<HealthComponent>(playerId, ComponentTypes.Health)?.current ?? 100;
 
     await system.onTick(2);
-    await combatTick.onTick(3);
-    await system.onTick(4);
+    for (let tick = 3; tick <= 7; tick++) {
+      await combatTick.onTick(tick);
+    }
+    await system.onTick(8);
 
     const playerHealth = registry.getComponent<HealthComponent>(playerId, ComponentTypes.Health);
     expect(healthAfterFirstAttack).toBeLessThan(100);

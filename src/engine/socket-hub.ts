@@ -179,6 +179,10 @@ export class SocketHub {
     this.presence.moveCharacter(socket.id, nextRoomId);
   }
 
+  moveCharacter(characterId: string, nextRoomId: string): void {
+    this.presence.moveCharacterById(characterId, nextRoomId);
+  }
+
   getRoomOccupants(roomId: string): RoomOccupant[] {
     return this.presence.getRoomOccupants(roomId);
   }

@@ -8,6 +8,7 @@ import {
   CombatSessionComponent,
   CombatStatusComponent,
   MobTemplateComponent,
+  PlayerIdComponent,
 } from '../../src/engine/ecs/components';
 import { COMMAND_AP_PENALTY } from '../../src/shared/constants';
 
@@ -36,9 +37,14 @@ describe('Combat ECS Systems', () => {
 
     it('processes AP recovery for recovering entities', async () => {
       const registry = new EcsRegistry();
-      const tickSystem = new CombatTickSystem(registry);
+      const characterUpdates = { publish: jest.fn() };
+      const tickSystem = new (CombatTickSystem as any)(registry, characterUpdates);
 
       const entityId = registry.createEntity();
+      registry.addComponent<PlayerIdComponent>(entityId, ComponentTypes.PlayerId, {
+        characterId: 'character-1',
+        accountId: 'account-1',
+      });
       registry.addComponent<CombatStatusComponent>(entityId, ComponentTypes.CombatStatus, {
         state: 'recovering',
         isPetActive: false,
@@ -66,6 +72,10 @@ describe('Combat ECS Systems', () => {
       expect(ap?.recoveryTicks).toBe(0);
       expect(status?.state).toBe('engaged');
       expect(ap?.current).toBe(6);
+      expect(characterUpdates.publish).toHaveBeenCalledWith('character-1', {
+        currentAp: 6,
+        maxAp: 6,
+      });
     });
   });
 

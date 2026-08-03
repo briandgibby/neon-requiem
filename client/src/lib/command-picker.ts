@@ -1,4 +1,4 @@
-export type CommandArgumentSource = 'direction' | 'poi' | 'ice';
+export type CommandArgumentSource = 'direction' | 'poi' | 'ice' | 'hostile' | 'ally' | 'mission' | 'shop-item';
 export type CommandArgumentSuggestionSource = 'occupant';
 
 interface PickerCommand {

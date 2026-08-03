@@ -16,6 +16,12 @@ describe('MissionService', () => {
     const auditLogger = overrides.auditLogger ?? { log: jest.fn().mockResolvedValue(undefined) };
     const missionRepo = overrides.missionRepo ?? {
       findActiveMissionById: jest.fn(),
+      findActiveMissionByLeaderId: jest.fn().mockResolvedValue(null),
+      findLatestCompletedMissionByLeaderId: jest.fn().mockResolvedValue(null),
+      findTemplateBySlug: jest.fn().mockResolvedValue(null),
+      listTemplates: jest.fn().mockResolvedValue([]),
+      deployMission: jest.fn(),
+      completeMission: jest.fn().mockResolvedValue({ completedNow: true, nuyenTotal: 2500 }),
       updateMissionStatus: jest.fn().mockResolvedValue(undefined),
     };
     const charRepo = overrides.charRepo ?? {
@@ -23,7 +29,7 @@ describe('MissionService', () => {
       updateCharacter: jest.fn().mockResolvedValue(undefined),
     };
     const worldRepo = overrides.worldRepo ?? {
-      findRoomBySlug: jest.fn().mockResolvedValue({ id: 'safe-room-1', name: 'Safehouse' }),
+      findRoomBySlug: jest.fn().mockResolvedValue({ id: 'safe-room-1', name: 'Safehouse', zoneId: 'safe-zone' }),
     };
     const missionGen = overrides.missionGen ?? {};
     const ecsRegistry = overrides.ecsRegistry ?? new EcsRegistry();
@@ -59,7 +65,7 @@ describe('MissionService', () => {
       status: 'ACTIVE',
     });
 
-    await expect(service.completeMission('char-1', 'account-1', 'mission-1', 1))
+    await expect(service.completeMission('char-1', 'account-1', 'mission-1'))
       .rejects.toThrow(NotFoundError);
   });
 
@@ -73,14 +79,14 @@ describe('MissionService', () => {
     missionRepo.findActiveMissionById.mockResolvedValue({
       id: 'mission-1',
       leaderId: 'char-1',
-      status: 'COMPLETED',
+      status: 'FAILED',
     });
 
-    await expect(service.completeMission('char-1', 'account-1', 'mission-1', 1))
+    await expect(service.completeMission('char-1', 'account-1', 'mission-1'))
       .rejects.toThrow(ValidationError);
   });
 
-  it('marks the mission completed after successful payout and extraction', async () => {
+  it('rejects completion while a mandatory objective is incomplete', async () => {
     const { service, missionRepo, charRepo } = createService();
     charRepo.findByIdAndAccount.mockResolvedValue({
       id: 'char-1',
@@ -91,13 +97,240 @@ describe('MissionService', () => {
       id: 'mission-1',
       leaderId: 'char-1',
       status: 'ACTIVE',
+      targetData: {
+        objectives: [
+          {
+            type: 'ELIMINATE_TARGET',
+            description: 'Eliminate the target',
+            isMandatory: true,
+            isCompleted: false,
+          },
+        ],
+      },
     });
 
-    const result = await service.completeMission('char-1', 'account-1', 'mission-1', 1.2);
+    await expect(service.completeMission('char-1', 'account-1', 'mission-1'))
+      .rejects.toThrow('Mandatory mission objectives are incomplete');
+  });
+
+  it('rejects completion when authoritative objective state is missing', async () => {
+    const { service, missionRepo, charRepo } = createService();
+    charRepo.findByIdAndAccount.mockResolvedValue({
+      id: 'char-1',
+      faction: 'shadow',
+      name: 'Chrome Fox',
+    });
+    missionRepo.findActiveMissionById.mockResolvedValue({
+      id: 'mission-1',
+      leaderId: 'char-1',
+      status: 'ACTIVE',
+      template: { basePayout: 1500 },
+      targetData: null,
+    });
+
+    await expect(service.completeMission('char-1', 'account-1', 'mission-1'))
+      .rejects.toThrow('Mission objective state is unavailable');
+    expect(missionRepo.completeMission).not.toHaveBeenCalled();
+  });
+
+  it('uses the Mission Template payout when completing a mission', async () => {
+    const { service, missionRepo, charRepo } = createService();
+    charRepo.findByIdAndAccount.mockResolvedValue({
+      id: 'char-1',
+      faction: 'shadow',
+      name: 'Chrome Fox',
+    });
+    missionRepo.findActiveMissionById.mockResolvedValue({
+      id: 'mission-1',
+      leaderId: 'char-1',
+      status: 'ACTIVE',
+      template: { basePayout: 1500 },
+      targetData: {
+        objectives: [
+          {
+            type: 'ELIMINATE_TARGET',
+            description: 'Eliminate the target',
+            isMandatory: true,
+            isCompleted: true,
+          },
+        ],
+      },
+    });
+
+    missionRepo.completeMission.mockResolvedValue({ completedNow: true, nuyenTotal: 2500 });
+
+    const result = await service.completeMission('char-1', 'account-1', 'mission-1');
 
     expect(result.success).toBe(true);
-    expect(result.payout).toBe(1200);
-    expect(missionRepo.updateMissionStatus).toHaveBeenCalledWith('mission-1', 'COMPLETED');
+    expect(result.payout).toBe(1500);
+    expect(result.nuyenTotal).toBe(2500);
+    expect(result.alreadyCompleted).toBe(false);
+  });
+
+  it('treats a repeated completion request as a successful no-op', async () => {
+    const { service, missionRepo, charRepo } = createService();
+    charRepo.findByIdAndAccount.mockResolvedValue({
+      id: 'char-1',
+      faction: 'shadow',
+      name: 'Chrome Fox',
+      nuyen: 2500,
+    });
+    missionRepo.findActiveMissionById.mockResolvedValue({
+      id: 'mission-1',
+      leaderId: 'char-1',
+      status: 'COMPLETED',
+      template: { basePayout: 1500 },
+    });
+
+    const result = await service.completeMission('char-1', 'account-1', 'mission-1');
+
+    expect(result.success).toBe(true);
+    expect(result.alreadyCompleted).toBe(true);
+    expect(result.nuyenTotal).toBe(2500);
+    expect(result.extractionRoom).toEqual({ id: 'safe-room-1', name: 'Safehouse', zoneId: 'safe-zone' });
+  });
+
+  it('lists available Mission Templates for an owned Character', async () => {
+    const { service, missionRepo, charRepo } = createService();
+    charRepo.findByIdAndAccount.mockResolvedValue({ id: 'char-1', className: 'street-samurai' });
+    missionRepo.listTemplates.mockResolvedValue([
+      {
+        slug: 'redmond-wetwork',
+        name: 'Redmond Wetwork',
+        description: 'Remove a gang lieutenant.',
+        type: 'ASSASSINATION',
+        baseDifficulty: 2,
+        basePayout: 2500,
+        requiredClasses: [],
+      },
+    ]);
+
+    await expect(service.listAvailableMissions('char-1', 'account-1')).resolves.toEqual([
+      {
+        slug: 'redmond-wetwork',
+        name: 'Redmond Wetwork',
+        description: 'Remove a gang lieutenant.',
+        type: 'ASSASSINATION',
+        baseDifficulty: 2,
+        basePayout: 2500,
+      },
+    ]);
+  });
+
+  it('advertises only supported Missions the Character is eligible to complete', async () => {
+    const { service, missionRepo, charRepo } = createService();
+    charRepo.findByIdAndAccount.mockResolvedValue({ id: 'char-1', className: 'street-samurai' });
+    missionRepo.listTemplates.mockResolvedValue([
+      { slug: 'hit', type: 'ASSASSINATION', requiredClasses: [], name: 'Hit', description: '', baseDifficulty: 1, basePayout: 1000 },
+      { slug: 'host', type: 'MATRIX', requiredClasses: ['decker'], name: 'Host', description: '', baseDifficulty: 1, basePayout: 1000 },
+      { slug: 'fetch', type: 'RETRIEVAL', requiredClasses: [], name: 'Fetch', description: '', baseDifficulty: 1, basePayout: 1000 },
+    ]);
+
+    await expect(service.listAvailableMissions('char-1', 'account-1')).resolves.toEqual([
+      { slug: 'hit', type: 'ASSASSINATION', name: 'Hit', description: '', baseDifficulty: 1, basePayout: 1000 },
+    ]);
+  });
+
+  it('rejects unsupported or class-restricted Mission contracts', async () => {
+    const { service, missionRepo, charRepo } = createService();
+    charRepo.findByIdAndAccount.mockResolvedValue({ id: 'char-1', className: 'street-samurai' });
+
+    missionRepo.findTemplateBySlug.mockResolvedValue({
+      id: 'template-1',
+      type: 'RETRIEVAL',
+      requiredClasses: [],
+      name: 'Fetch',
+    });
+    await expect(service.acceptMission({
+      templateSlug: 'fetch', characterId: 'char-1', accountId: 'account-1',
+    })).rejects.toThrow('not currently playable');
+
+    missionRepo.findTemplateBySlug.mockResolvedValue({
+      id: 'template-2',
+      type: 'MATRIX',
+      requiredClasses: ['decker'],
+      name: 'Host',
+    });
+    await expect(service.acceptMission({
+      templateSlug: 'host', characterId: 'char-1', accountId: 'account-1',
+    })).rejects.toThrow('requires one of these classes');
+  });
+
+  it('does not accept a second Mission while one is active', async () => {
+    const { service, missionRepo, charRepo } = createService();
+    charRepo.findByIdAndAccount.mockResolvedValue({ id: 'char-1' });
+    missionRepo.findActiveMissionByLeaderId.mockResolvedValue({ id: 'mission-existing' });
+
+    await expect(service.acceptMission({
+      templateSlug: 'redmond-wetwork',
+      characterId: 'char-1',
+      accountId: 'account-1',
+    })).rejects.toThrow('Complete or abandon your active Mission first');
+  });
+
+  it('returns the active Mission and objective state for an owned Character', async () => {
+    const { service, missionRepo, charRepo } = createService();
+    charRepo.findByIdAndAccount.mockResolvedValue({ id: 'char-1' });
+    missionRepo.findActiveMissionByLeaderId.mockResolvedValue({
+      id: 'mission-1',
+      status: 'ACTIVE',
+      template: { name: 'Redmond Wetwork', basePayout: 2500 },
+      targetData: {
+        objectives: [
+          {
+            type: 'ELIMINATE_TARGET',
+            description: 'Eliminate the lieutenant',
+            isMandatory: true,
+            isCompleted: false,
+          },
+        ],
+      },
+      missionInstance: { status: 'PENDING', alertLevel: 'GREEN' },
+    });
+
+    await expect(service.getActiveMission('char-1', 'account-1')).resolves.toEqual({
+      missionId: 'mission-1',
+      name: 'Redmond Wetwork',
+      status: 'ACTIVE',
+      instanceStatus: 'PENDING',
+      alertLevel: 'GREEN',
+      payout: 2500,
+      objectives: [
+        {
+          description: 'Eliminate the lieutenant',
+          isMandatory: true,
+          isCompleted: false,
+        },
+      ],
+    });
+  });
+
+  it('deploys an owned Character into the first room of their active Mission Instance', async () => {
+    const { service, missionRepo, charRepo } = createService();
+    charRepo.findByIdAndAccount.mockResolvedValue({ id: 'char-1' });
+    missionRepo.deployMission.mockResolvedValue({
+      missionId: 'mission-1',
+      room: { id: 'instance-room-1', name: 'office a', zoneId: 'instance-zone' },
+    });
+
+    await expect(service.deployMission('char-1', 'account-1')).resolves.toEqual({
+      missionId: 'mission-1',
+      room: { id: 'instance-room-1', name: 'office a', zoneId: 'instance-zone' },
+    });
+  });
+
+  it('finds a just-completed Mission so exfil can reconcile interrupted runtime movement', async () => {
+    const { service, missionRepo, charRepo, worldRepo } = createService();
+    charRepo.findByIdAndAccount.mockResolvedValue({
+      id: 'char-1',
+      faction: 'shadow',
+      currentRoomId: 'safe-room-1',
+    });
+    worldRepo.findRoomBySlug.mockResolvedValue({ id: 'safe-room-1' });
+    missionRepo.findLatestCompletedMissionByLeaderId.mockResolvedValue({ id: 'mission-1' });
+
+    await expect(service.getMissionForExfil('char-1', 'account-1'))
+      .resolves.toEqual({ missionId: 'mission-1' });
   });
 
   it('attaches accepted mission assassination targets to spawned ECS NPCs', async () => {
@@ -124,6 +357,7 @@ describe('MissionService', () => {
       ],
     };
     const missionRepo = {
+      findActiveMissionByLeaderId: jest.fn().mockResolvedValue(null),
       findTemplateBySlug: jest.fn().mockResolvedValue({
         id: 'template-1',
         slug: 'hit-job',
@@ -209,6 +443,7 @@ describe('acceptMission — instance creation', () => {
       ]),
     };
     const missionRepo = {
+      findActiveMissionByLeaderId: jest.fn().mockResolvedValue(null),
       findTemplateBySlug: jest.fn().mockResolvedValue({
         id: 'tmpl-1',
         type: 'ASSASSINATION',
@@ -261,6 +496,7 @@ describe('acceptMission — instance creation', () => {
       createInstanceNode: jest.fn().mockResolvedValue(undefined),
     };
     const missionRepo = {
+      findActiveMissionByLeaderId: jest.fn().mockResolvedValue(null),
       findTemplateBySlug: jest.fn().mockResolvedValue({
         id: 'tmpl-2', type: 'MATRIX', baseDifficulty: 2, name: 'Corp Breach',
       }),

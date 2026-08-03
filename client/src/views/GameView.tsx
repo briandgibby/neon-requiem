@@ -17,6 +17,7 @@ interface NamedEntity {
 }
 
 interface RoomData {
+  id?: string;
   name: string;
   description: string;
   slug?: string;
@@ -24,7 +25,33 @@ interface RoomData {
   gridY?: number;
   exits?: Record<string, string>;
   occupants?: NamedEntity[];
+  poiCategory?: string | null;
   zone?: { name: string; slug: string };
+}
+
+interface CombatTarget {
+  id: string;
+  name: string;
+  currentHp: number;
+  maxHp: number;
+}
+
+interface CombatTargets {
+  hostiles: CombatTarget[];
+  allies: CombatTarget[];
+}
+
+interface MissionTemplate {
+  slug: string;
+  name: string;
+  basePayout: number;
+}
+
+interface ShopItem {
+  itemId: string;
+  price: number;
+  stock: number;
+  item: { id: string; name: string };
 }
 
 interface MatrixIce {
@@ -79,6 +106,11 @@ export const GameView: React.FC<GameViewProps> = ({ token, character, onLogout }
   const [localPois, setLocalPois] = useState<LocalPoi[]>([]);
   const [roomOccupants, setRoomOccupants] = useState<RoomOccupant[]>([]);
   const [commands, setCommands] = useState<CommandMetadata[]>([]);
+  const [combatTargets, setCombatTargets] = useState<CombatTargets>({ hostiles: [], allies: [] });
+  const [missionTemplates, setMissionTemplates] = useState<MissionTemplate[]>([]);
+  const [shopItems, setShopItems] = useState<ShopItem[]>([]);
+  const currentAp = charData.currentAp ?? 6;
+  const maxAp = charData.maxAp ?? 6;
   const terminalRef = useRef<TerminalHandle>(null);
   const {
     hotkeys,
@@ -109,10 +141,66 @@ export const GameView: React.FC<GameViewProps> = ({ token, character, onLogout }
         console.error('[GameView] command catalog load failed:', err);
       });
 
+    fetch(apiUrl(`/mission/templates?characterId=${encodeURIComponent(character.id)}`), {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then((response) => {
+        if (!response.ok) throw new Error('Failed to load Mission catalog');
+        return response.json();
+      })
+      .then((data: { missions?: MissionTemplate[] }) => {
+        if (!cancelled) setMissionTemplates(data.missions ?? []);
+      })
+      .catch((err) => {
+        console.error('[GameView] Mission catalog load failed:', err);
+      });
+
     return () => {
       cancelled = true;
     };
-  }, [token]);
+  }, [character.id, token]);
+
+  useEffect(() => {
+    if (!roomData?.id || charData.isJackedIn) {
+      return;
+    }
+
+    const controller = new AbortController();
+    fetch(apiUrl(`/combat/targets?characterId=${encodeURIComponent(character.id)}`), {
+      headers: { Authorization: `Bearer ${token}` },
+      signal: controller.signal,
+    })
+      .then((response) => {
+        if (!response.ok) throw new Error('Failed to load combat targets');
+        return response.json();
+      })
+      .then((targets: CombatTargets) => setCombatTargets(targets))
+      .catch((err) => {
+        if (err instanceof DOMException && err.name === 'AbortError') return;
+        console.error('[GameView] combat target load failed:', err);
+      });
+
+    return () => controller.abort();
+  }, [character.id, charData.isJackedIn, roomData?.id, token]);
+
+  useEffect(() => {
+    if (!roomData?.id || roomData.poiCategory !== 'SHOP' || charData.isJackedIn) return;
+    const controller = new AbortController();
+    fetch(apiUrl('/api/shop/' + encodeURIComponent(roomData.id)), {
+      headers: { Authorization: 'Bearer ' + token },
+      signal: controller.signal,
+    })
+      .then((response) => {
+        if (!response.ok) throw new Error('Failed to load shop inventory');
+        return response.json();
+      })
+      .then((inventory: ShopItem[]) => setShopItems(inventory))
+      .catch((err) => {
+        if (err instanceof DOMException && err.name === 'AbortError') return;
+        console.error('[GameView] shop inventory load failed:', err);
+      });
+    return () => controller.abort();
+  }, [charData.isJackedIn, roomData?.id, roomData?.poiCategory, token]);
 
   useEffect(() => {
     if (!socket) return;
@@ -141,6 +229,10 @@ export const GameView: React.FC<GameViewProps> = ({ token, character, onLogout }
 
     socket.on('matrix_data', (data: MatrixData | null) => {
       setMatrixData(data);
+      if (data) {
+        setCombatTargets({ hostiles: [], allies: [] });
+        setShopItems([]);
+      }
       setCharData(prev => ({ ...prev, isJackedIn: !!data }));
       if (terminalRef.current && data) {
         terminalRef.current.writeln(`\r\n\x1b[1;36m[ HOST: ${data.name || data.nodeId} ]\x1b[0m`);
@@ -159,6 +251,8 @@ export const GameView: React.FC<GameViewProps> = ({ token, character, onLogout }
 
     socket.on('room_data', (data: RoomData) => {
       setRoomData(data);
+      setCombatTargets({ hostiles: [], allies: [] });
+      if (data.poiCategory !== 'SHOP') setShopItems([]);
       if (terminalRef.current) {
         terminalRef.current.writeln(`\r\n\x1b[1;36m[ ${data.name} ]\x1b[0m`);
         
@@ -204,6 +298,14 @@ export const GameView: React.FC<GameViewProps> = ({ token, character, onLogout }
       terminalRef.current?.writeln(`\x1b[36m${prefix} ${data.from}: ${data.text}\x1b[0m`);
     });
 
+    socket.on('combat_targets', (targets: CombatTargets) => {
+      setCombatTargets(targets);
+    });
+
+    socket.on('shop_items', (inventory: ShopItem[]) => {
+      setShopItems(inventory);
+    });
+
     // Initial character select to server
     socket.emit('select_character', { characterId: character.id });
 
@@ -217,6 +319,8 @@ export const GameView: React.FC<GameViewProps> = ({ token, character, onLogout }
       socket.off('player_entered');
       socket.off('player_left');
       socket.off('chat_message');
+      socket.off('combat_targets');
+      socket.off('shop_items');
     };
   }, [socket, character.id]);
 
@@ -441,6 +545,24 @@ export const GameView: React.FC<GameViewProps> = ({ token, character, onLogout }
                   value: ice.id,
                   label: `${ice.name ?? ice.slug ?? ice.type} (${ice.currentHp}/${ice.maxHp})`,
                 })),
+              hostile: combatTargets.hostiles.map((target) => ({
+                value: target.id,
+                label: `${target.name} (${target.currentHp}/${target.maxHp})`,
+              })),
+              ally: combatTargets.allies.map((target) => ({
+                value: target.id,
+                label: `${target.name} (${target.currentHp}/${target.maxHp})`,
+              })),
+              mission: missionTemplates.map((mission) => ({
+                value: mission.slug,
+                label: `${mission.name} (${mission.basePayout}¥)`,
+              })),
+              'shop-item': shopItems
+                .filter((entry) => entry.stock === -1 || entry.stock > 0)
+                .map((entry) => ({
+                  value: entry.itemId,
+                  label: entry.item.name + ' (' + entry.price + '¥)',
+                })),
             }}
             argumentSuggestions={{
               occupant: roomOccupants
@@ -532,11 +654,16 @@ export const GameView: React.FC<GameViewProps> = ({ token, character, onLogout }
           <div className="space-y-2">
             <div className="flex justify-between text-[10px] tracking-widest text-[#00ff41]/80 font-bold">
               <span>ACTION POOL</span>
-              <span>6/6</span>
+              <span>{currentAp}/{maxAp}</span>
             </div>
             <div className="flex gap-2">
-              {[1, 2, 3, 4, 5, 6].map(pip => (
-                <div key={pip} className="w-4 h-4 bg-orange-500 border border-orange-400/50 shadow-[0_0_8px_rgba(249,115,22,0.4)]" />
+              {Array.from({ length: maxAp }, (_, index) => index + 1).map(pip => (
+                <div
+                  key={pip}
+                  className={`w-4 h-4 border ${pip <= currentAp
+                    ? 'bg-orange-500 border-orange-400/50 shadow-[0_0_8px_rgba(249,115,22,0.4)]'
+                    : 'bg-orange-950/20 border-orange-500/20'}`}
+                />
               ))}
             </div>
           </div>

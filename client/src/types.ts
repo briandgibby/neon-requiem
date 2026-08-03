@@ -10,6 +10,8 @@ export interface Character {
   maxHp: number;
   currentStun?: number;
   maxStun?: number;
+  currentAp?: number;
+  maxAp?: number;
   armorValue: number;
   isJackedIn?: boolean;
   areaKnowledge?: string[];

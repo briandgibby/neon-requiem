@@ -1,5 +1,6 @@
 import { PrismaClient } from '@prisma/client';
-import { ShopItemRecord } from './shop.types';
+import { BuyItemInput, BuyItemResult, ShopItemRecord } from './shop.types';
+import { NotFoundError, ValidationError } from '../../shared/errors';
 
 export class ShopRepository {
   constructor(private readonly db: PrismaClient) {}
@@ -11,62 +12,109 @@ export class ShopRepository {
     }) as unknown as ShopItemRecord[];
   }
 
-  async findShopItem(roomId: string, itemId: string): Promise<ShopItemRecord | null> {
-    return this.db.shopItem.findUnique({
-      where: { roomId_itemId: { roomId, itemId } },
-      include: { item: true }
-    }) as unknown as ShopItemRecord | null;
-  }
-
-  async updateStock(shopItemId: string, delta: number): Promise<void> {
-    const shopItem = await this.db.shopItem.findUnique({ where: { id: shopItemId } });
-    if (!shopItem || shopItem.stock === -1) return;
-
-    await this.db.shopItem.update({
-      where: { id: shopItemId },
-      data: { stock: shopItem.stock + delta }
-    });
-  }
-
-  async addInventoryItem(characterId: string, itemId: string, quantity: number): Promise<void> {
-    const existing = await this.db.inventoryItem.findFirst({
-      where: { characterId, itemId, isEquipped: false }
-    });
-
-    if (existing) {
-      await this.db.inventoryItem.update({
-        where: { id: existing.id },
-        data: { quantity: existing.quantity + quantity }
+  async purchase(input: BuyItemInput): Promise<BuyItemResult> {
+    return this.db.$transaction(async (tx) => {
+      const character = await tx.character.findFirst({
+        where: { id: input.characterId, accountId: input.accountId },
+        include: { inventory: { include: { item: true } } },
       });
-    } else {
-      await this.db.inventoryItem.create({
-        data: {
-          characterId,
-          itemId,
-          quantity,
-          isEquipped: false
-        }
-      });
-    }
-  }
-
-  async deductNuyen(characterId: string, amount: number): Promise<number> {
-    const char = await this.db.character.update({
-      where: { id: characterId },
-      data: { nuyen: { decrement: amount } }
-    });
-    return char.nuyen;
-  }
-
-  async logTransaction(characterId: string, message: string, metadata: any): Promise<void> {
-    await this.db.auditLog.create({
-      data: {
-        characterId,
-        category: 'TRANSACTION',
-        severity: 'INFO',
-        message,
-        metadata
+      if (!character) throw new NotFoundError('Character');
+      if (character.currentRoomId !== input.roomId) {
+        throw new ValidationError('You must be at the shop to buy items');
       }
-    });
+
+      const room = await tx.room.findUnique({
+        where: { id: input.roomId },
+        select: { poiCategory: true },
+      });
+      if (room?.poiCategory !== 'SHOP') throw new ValidationError('This location is not a shop');
+
+      const shopItem = await tx.shopItem.findUnique({
+        where: { roomId_itemId: { roomId: input.roomId, itemId: input.itemId } },
+        include: { item: true },
+      });
+      if (!shopItem) throw new ValidationError('Item not available in this shop');
+      if (shopItem.stock !== -1 && shopItem.stock < input.quantity) {
+        throw new ValidationError('Not enough stock available');
+      }
+
+      const totalCost = shopItem.price * input.quantity;
+      if (character.nuyen < totalCost) {
+        throw new ValidationError(`Not enough Nuyen. Required: ${totalCost}, Available: ${character.nuyen}`);
+      }
+
+      const usedSlots = character.inventory.reduce(
+        (total, entry) => total + (entry.item.slots * entry.quantity),
+        0,
+      );
+      if (usedSlots + (shopItem.item.slots * input.quantity) > character.maxInventorySlots) {
+        throw new ValidationError('Not enough inventory space');
+      }
+
+      if (shopItem.stock !== -1) {
+        const claimedStock = await tx.shopItem.updateMany({
+          where: { id: shopItem.id, stock: { gte: input.quantity } },
+          data: { stock: { decrement: input.quantity } },
+        });
+        if (claimedStock.count !== 1) throw new ValidationError('Not enough stock available');
+      }
+
+      const charged = await tx.character.updateMany({
+        where: {
+          id: input.characterId,
+          accountId: input.accountId,
+          currentRoomId: input.roomId,
+          nuyen: { gte: totalCost },
+        },
+        data: { nuyen: { decrement: totalCost } },
+      });
+      if (charged.count !== 1) throw new ValidationError('Purchase state changed; try again');
+
+      const existing = await tx.inventoryItem.findFirst({
+        where: { characterId: input.characterId, itemId: input.itemId, isEquipped: false },
+      });
+      if (existing) {
+        await tx.inventoryItem.update({
+          where: { id: existing.id },
+          data: { quantity: { increment: input.quantity } },
+        });
+      } else {
+        await tx.inventoryItem.create({
+          data: {
+            characterId: input.characterId,
+            itemId: input.itemId,
+            quantity: input.quantity,
+            isEquipped: false,
+          },
+        });
+      }
+
+      await tx.auditLog.create({
+        data: {
+          characterId: input.characterId,
+          category: 'TRANSACTION',
+          severity: 'INFO',
+          message: `Purchased ${input.quantity}x ${shopItem.item.name} for ${totalCost} Nuyen`,
+          metadata: {
+            itemId: input.itemId,
+            quantity: input.quantity,
+            cost: totalCost,
+            roomId: input.roomId,
+          },
+        },
+      });
+
+      const updatedCharacter = await tx.character.findUniqueOrThrow({
+        where: { id: input.characterId },
+        select: { nuyen: true },
+      });
+      return {
+        success: true,
+        message: `Successfully purchased ${input.quantity}x ${shopItem.item.name}`,
+        item: shopItem.item,
+        nuyenRemaining: updatedCharacter.nuyen,
+      };
+    }, { isolationLevel: 'Serializable' });
   }
+
 }

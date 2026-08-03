@@ -3,7 +3,17 @@ import { NotFoundError, ValidationError } from '../../shared/errors';
 import { STARTING_ROOM_SHADOW, STARTING_ROOM_CORP } from '../../shared/constants';
 import { MissionRepository } from './mission.repository';
 import { MissionGenerator } from './mission.generator';
-import { AcceptMissionInput, MissionInstanceData, MissionObjective } from './mission.types';
+import {
+  AcceptMissionInput,
+  AcceptMissionResult,
+  ActiveMissionSummary,
+  MissionCompletionResult,
+  MissionDeploymentResult,
+  MissionExfilCandidate,
+  MissionInstanceData,
+  MissionObjective,
+  MissionTemplateSummary,
+} from './mission.types';
 import { CharacterRepository } from '../character/character.repository';
 import { WorldRepository } from '../world/world.repository';
 import { EcsRegistry } from '../../engine/ecs/registry';
@@ -13,6 +23,20 @@ import { MobTemplateRecord } from '../combat/combat.types';
 import { MobFactory } from '../../engine/ecs/factories/mob-factory';
 import { InstanceRepository } from './instance.repository';
 import { MatrixService } from '../matrix/matrix.service';
+import { z } from 'zod';
+
+const characterAccessSchema = z.object({
+  characterId: z.string().min(1),
+  accountId: z.string().min(1),
+});
+const acceptMissionInputSchema = characterAccessSchema.extend({
+  templateSlug: z.string().min(1),
+  partyId: z.string().min(1).optional(),
+});
+const completeMissionInputSchema = characterAccessSchema.extend({
+  missionId: z.string().min(1),
+});
+const PLAYABLE_MISSION_TYPES = new Set(['ASSASSINATION', 'MATRIX']);
 
 export class MissionService {
   constructor(
@@ -39,6 +63,17 @@ export class MissionService {
       default:
         return 'VISIT';
     }
+  }
+
+  private isTemplateEligible(
+    template: { type: string; requiredClasses?: unknown },
+    className: string,
+  ): boolean {
+    if (!PLAYABLE_MISSION_TYPES.has(template.type)) return false;
+    const requiredClasses = Array.isArray(template.requiredClasses)
+      ? template.requiredClasses.filter((entry): entry is string => typeof entry === 'string')
+      : [];
+    return requiredClasses.length === 0 || requiredClasses.includes(className);
   }
 
   private async attachMissionTargets(missionId: string, targetData: MissionInstanceData): Promise<void> {
@@ -76,6 +111,65 @@ export class MissionService {
     }
   }
 
+  async listAvailableMissions(characterId: string, accountId: string): Promise<MissionTemplateSummary[]> {
+    const input = characterAccessSchema.parse({ characterId, accountId });
+    const character = await this.charRepo.findByIdAndAccount(input.characterId, input.accountId);
+    if (!character) throw new NotFoundError('Character');
+    const templates = await this.missionRepo.listTemplates();
+    return templates
+      .filter((template) => this.isTemplateEligible(template, character.className))
+      .map(({ requiredClasses: _requiredClasses, ...template }) => template);
+  }
+
+  async getActiveMission(characterId: string, accountId: string): Promise<ActiveMissionSummary | null> {
+    const input = characterAccessSchema.parse({ characterId, accountId });
+    const character = await this.charRepo.findByIdAndAccount(input.characterId, input.accountId);
+    if (!character) throw new NotFoundError('Character');
+
+    const mission = await this.missionRepo.findActiveMissionByLeaderId(characterId);
+    if (!mission) return null;
+    const targetData = mission.targetData as unknown as Partial<MissionInstanceData> | null;
+
+    return {
+      missionId: mission.id,
+      name: mission.template.name,
+      status: mission.status,
+      instanceStatus: mission.missionInstance?.status ?? null,
+      alertLevel: mission.missionInstance?.alertLevel ?? 'GREEN',
+      payout: mission.template.basePayout,
+      objectives: (targetData?.objectives ?? []).map((objective) => ({
+        description: objective.description,
+        isMandatory: objective.isMandatory,
+        isCompleted: objective.isCompleted,
+      })),
+    };
+  }
+
+  async deployMission(characterId: string, accountId: string): Promise<MissionDeploymentResult> {
+    const input = characterAccessSchema.parse({ characterId, accountId });
+    const character = await this.charRepo.findByIdAndAccount(input.characterId, input.accountId);
+    if (!character) throw new NotFoundError('Character');
+    const deployment = await this.missionRepo.deployMission(input.characterId);
+    if (!deployment) throw new ValidationError('No deployable Mission Instance found');
+    return deployment;
+  }
+
+  async getMissionForExfil(characterId: string, accountId: string): Promise<MissionExfilCandidate | null> {
+    const input = characterAccessSchema.parse({ characterId, accountId });
+    const character = await this.charRepo.findByIdAndAccount(input.characterId, input.accountId);
+    if (!character) throw new NotFoundError('Character');
+
+    const activeMission = await this.missionRepo.findActiveMissionByLeaderId(input.characterId);
+    if (activeMission) return { missionId: activeMission.id };
+
+    const safeRoomSlug = character.faction === 'shadow' ? STARTING_ROOM_SHADOW : STARTING_ROOM_CORP;
+    const safeRoom = await this.worldRepo.findRoomBySlug(safeRoomSlug);
+    if (!safeRoom || character.currentRoomId !== safeRoom.id) return null;
+
+    const completedMission = await this.missionRepo.findLatestCompletedMissionByLeaderId(input.characterId);
+    return completedMission ? { missionId: completedMission.id } : null;
+  }
+
   async updateObjectiveProgress(missionId: string, objectiveIndex: number) {
     const mission = await this.missionRepo.findActiveMissionById(missionId);
     if (!mission) return;
@@ -99,22 +193,35 @@ export class MissionService {
     });
   }
 
-  async acceptMission(input: AcceptMissionInput) {
-    const character = await this.charRepo.findByIdAndAccount(input.characterId, input.accountId);
+  async acceptMission(input: AcceptMissionInput): Promise<AcceptMissionResult> {
+    const parsedInput = acceptMissionInputSchema.parse(input);
+    const character = await this.charRepo.findByIdAndAccount(parsedInput.characterId, parsedInput.accountId);
     if (!character) throw new NotFoundError('Character');
 
-    const template = await this.missionRepo.findTemplateBySlug(input.templateSlug);
-    if (!template) throw new NotFoundError('Mission template');
+    const existingMission = await this.missionRepo.findActiveMissionByLeaderId(parsedInput.characterId);
+    if (existingMission) throw new ValidationError('Complete or abandon your active Mission first');
 
-    const seed = `${input.characterId}_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
-    const partyComp = ['samurai', 'street-doc'];
+    const template = await this.missionRepo.findTemplateBySlug(parsedInput.templateSlug);
+    if (!template) throw new NotFoundError('Mission template');
+    if (!PLAYABLE_MISSION_TYPES.has(template.type)) {
+      throw new ValidationError('This Mission type is not currently playable');
+    }
+    if (!this.isTemplateEligible(template, character.className)) {
+      const requiredClasses = Array.isArray(template.requiredClasses)
+        ? template.requiredClasses.join(', ')
+        : '';
+      throw new ValidationError(`This Mission requires one of these classes: ${requiredClasses}`);
+    }
+
+    const seed = `${parsedInput.characterId}_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
+    const partyComp = [character.className];
     const targetData = this.missionGen.generate(template, seed, partyComp);
 
     // 1. Persist active mission first to get its ID
     const activeMission = await this.missionRepo.createActiveMission({
       templateId: template.id,
-      leaderId: input.characterId,
-      partyId: input.partyId,
+      leaderId: parsedInput.characterId,
+      partyId: parsedInput.partyId,
       seed,
       targetData
     });
@@ -123,7 +230,7 @@ export class MissionService {
     if (this.instanceRepo) {
       const instance = await this.instanceRepo.createInstance({
         activeMissionId: activeMission.id,
-        partyLeaderId: input.characterId,
+        partyLeaderId: parsedInput.characterId,
       });
 
       try {
@@ -203,48 +310,63 @@ export class MissionService {
     }
   }
 
-  async completeMission(characterId: string, accountId: string, missionId: string, successRating: number) {
-    const character = await this.charRepo.findByIdAndAccount(characterId, accountId);
+  async completeMission(
+    characterId: string,
+    accountId: string,
+    missionId: string,
+  ): Promise<MissionCompletionResult> {
+    const input = completeMissionInputSchema.parse({ characterId, accountId, missionId });
+    const character = await this.charRepo.findByIdAndAccount(input.characterId, input.accountId);
     if (!character) throw new NotFoundError('Character');
 
-    const mission = await this.missionRepo.findActiveMissionById(missionId);
+    const mission = await this.missionRepo.findActiveMissionById(input.missionId);
     if (!mission || mission.leaderId !== character.id) throw new NotFoundError('Mission');
-    if (mission.status !== 'ACTIVE') throw new ValidationError('Mission is not active');
+    if (mission.status !== 'ACTIVE' && mission.status !== 'COMPLETED') {
+      throw new ValidationError('Mission is not active');
+    }
 
-    // 1. Calculate Payout (Placeholder)
-    const basePayout = 1000;
-    const finalPayout = Math.floor(basePayout * successRating);
-
-    // 2. Audit Log the completion
-    await this.auditLogger.log({
-      category: 'MISSION_PAYOUT',
-      severity: 'INFO',
-      message: `Character ${character.name} completed mission ${missionId} with success rating ${successRating}. Payout: ${finalPayout}¥`,
-      characterId: character.id,
-      metadata: { missionId, successRating, finalPayout }
-    });
-
-    // 3. Exfiltrate (Portal to safe zone)
     const safeRoomSlug = character.faction === 'shadow' ? STARTING_ROOM_SHADOW : STARTING_ROOM_CORP;
     const safeRoom = await this.worldRepo.findRoomBySlug(safeRoomSlug);
+    if (!safeRoom) throw new ValidationError('Safe extraction room is unavailable');
 
-    if (safeRoom) {
-      await this.charRepo.updateCharacter(characterId, { currentRoomId: safeRoom.id });
+    if (mission.status === 'COMPLETED') {
+      return {
+        success: true,
+        message: `Mission already complete. Payout: ${mission.template.basePayout}¥`,
+        payout: mission.template.basePayout,
+        nuyenTotal: character.nuyen,
+        alreadyCompleted: true,
+        extractionRoom: { id: safeRoom.id, name: safeRoom.name, zoneId: safeRoom.zoneId },
+      };
     }
 
-    await this.missionRepo.updateMissionStatus(missionId, 'COMPLETED');
-
-    if (this.instanceRepo) {
-      const instance = await this.instanceRepo.findInstanceByMissionId(missionId);
-      if (instance) {
-        await this.instanceRepo.updateInstanceStatus(instance.id, 'COMPLETED');
-      }
+    const objectives = (mission.targetData as unknown as Partial<MissionInstanceData> | null)?.objectives;
+    if (!Array.isArray(objectives) || objectives.length === 0) {
+      throw new ValidationError('Mission objective state is unavailable');
     }
+    if (objectives.some((objective) => objective.isMandatory && !objective.isCompleted)) {
+      throw new ValidationError('Mandatory mission objectives are incomplete');
+    }
+
+    const finalPayout = mission.template.basePayout;
+
+    const completion = await this.missionRepo.completeMission({
+      missionId: input.missionId,
+      characterId: input.characterId,
+      characterName: character.name,
+      safeRoomId: safeRoom.id,
+      payout: finalPayout,
+    });
 
     return {
       success: true,
-      message: `Mission Complete. You have been extracted to ${safeRoom?.name || 'Safe Zone'}. Payout: ${finalPayout}¥`,
-      payout: finalPayout
+      message: completion.completedNow
+        ? `Mission Complete. You have been extracted to ${safeRoom.name}. Payout: ${finalPayout}¥`
+        : `Mission already complete. Payout: ${finalPayout}¥`,
+      payout: finalPayout,
+      nuyenTotal: completion.nuyenTotal,
+      alreadyCompleted: !completion.completedNow,
+      extractionRoom: { id: safeRoom.id, name: safeRoom.name, zoneId: safeRoom.zoneId },
     };
   }
 }

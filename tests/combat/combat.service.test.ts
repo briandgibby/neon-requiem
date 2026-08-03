@@ -72,6 +72,7 @@ describe('CombatService', () => {
     id: 'char_1',
     accountId: 'acc_1',
     name: 'Kira',
+    currentRoomId: 'room_1',
     currentHp: 100,
     maxHp: 100,
     currentStun: 100,
@@ -98,6 +99,14 @@ describe('CombatService', () => {
   };
 
   describe('joinCombat', () => {
+    it('rejects a room that does not match the owned Character location', async () => {
+      mockCharRepo.findByIdAndAccount.mockResolvedValue(mockCharacter);
+
+      await expect(service.joinCombat('char_1', 'acc_1', 'other-room'))
+        .rejects.toThrow('Character is not in that room');
+      expect(mockEcsRegistry.createEntity).not.toHaveBeenCalled();
+    });
+
     it('creates a new player entity in ECS if none exists', async () => {
       mockCharRepo.findByIdAndAccount.mockResolvedValue(mockCharacter);
       mockEcsRegistry.getEntityByComponent.mockReturnValue(undefined); // Entity not in ECS
@@ -221,18 +230,30 @@ describe('CombatService', () => {
       mockCharRepo.findByIdAndAccount.mockResolvedValue(mockCharacter);
       mockEcsRegistry.getEntityByComponent.mockReturnValue('entity-1');
       mockEcsRegistry.getEntitiesWith.mockReturnValue(['entity-1']);
+      mockMoveDispatcher.dispatch.mockResolvedValue({
+        success: true,
+        message: 'You attack and deal 9 damage (solid).',
+        data: { finalDamage: 9 },
+      });
       mockEcsRegistry.getComponent.mockImplementation((id: string, type: string) => {
         if (type === 'player_id') return { characterId: 'char_1' };
-        if (type === 'health') return { current: 50 };
+        if (type === 'health') return { current: 50, max: 100 };
+        if (type === 'ap') return { current: 2, max: 6 };
         if (type === 'stun') return { current: 50 };
         if (type === 'mana') return { current: 50 };
         return undefined;
       });
 
-      await service.performMove({ characterId: 'char_1', accountId: 'acc_1', targetId: 'mob_1', move: 'attack' });
+      const result = await service.performMove({ characterId: 'char_1', accountId: 'acc_1', targetId: 'mob_1', move: 'attack' });
 
       expect(mockMoveDispatcher.dispatch).toHaveBeenCalledWith('attack', 'entity-1', 'mob_1', { registry: mockEcsRegistry });
       expect(service['syncCoordinator'].syncAllPlayers).toHaveBeenCalled();
+      expect(result.data.actorState).toEqual({
+        currentHp: 50,
+        maxHp: 100,
+        currentAp: 2,
+        maxAp: 6,
+      });
     });
 
     it('throws error if attacking while not in combat', async () => {

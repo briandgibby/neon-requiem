@@ -21,6 +21,8 @@ export class RegenSystem implements Tickable {
       const pool = this.registry.getComponent<any>(entityId, type);
       if (!pool) continue;
 
+      if (type === ComponentTypes.Health && pool.current <= 0) continue;
+
       if (pool.current < pool.max) {
         pool.current = Math.min(pool.max, pool.current + 1);
         pool.lastRegenAt = Date.now();

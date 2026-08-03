@@ -1,6 +1,6 @@
 import { EcsRegistry } from '../registry';
 import { Tickable } from '../../heartbeat';
-import { ComponentTypes, HealthComponent, NpcIdComponent, CombatSessionComponent, MatrixNodeComponent, DeckerComponent, CombatStatusComponent } from '../components';
+import { ComponentTypes, HealthComponent, NpcIdComponent, CombatSessionComponent, MatrixNodeComponent, DeckerComponent, CombatStatusComponent, MissionTargetComponent } from '../components';
 
 export class EntityCleanupSystem implements Tickable {
   readonly name = 'ecs_entity_cleanup_system';
@@ -20,6 +20,8 @@ export class EntityCleanupSystem implements Tickable {
     for (const npcId of npcIds) {
       const health = this.registry.getComponent<HealthComponent>(npcId, ComponentTypes.Health);
       if (health && health.current <= 0) {
+        const missionTarget = this.registry.getComponent<MissionTargetComponent>(npcId, ComponentTypes.MissionTarget);
+        if (missionTarget && !missionTarget.isCompleted) continue;
         // NPC is dead. In a fuller system, we'd trigger loot drops here.
         this.registry.destroyEntity(npcId);
       }

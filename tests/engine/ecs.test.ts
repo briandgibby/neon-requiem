@@ -75,6 +75,23 @@ describe('ECS Foundation', () => {
       const health = registry.getComponent<HealthComponent>(e1, ComponentTypes.Health);
       expect(health?.current).toBe(100);
     });
+
+    it('does not revive incapacitated entities', async () => {
+      const registry = new EcsRegistry();
+      const system = new RegenSystem(registry);
+
+      const e1 = registry.createEntity();
+      registry.addComponent<HealthComponent>(e1, ComponentTypes.Health, {
+        current: 0,
+        max: 100,
+        lastRegenAt: 0
+      });
+
+      await system.onTick(10);
+
+      const health = registry.getComponent<HealthComponent>(e1, ComponentTypes.Health);
+      expect(health?.current).toBe(0);
+    });
   });
 
   describe('MobFactory', () => {

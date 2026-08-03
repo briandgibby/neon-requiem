@@ -946,7 +946,45 @@ async function main() {
     }
   });
 
+  await prisma.missionTemplate.upsert({
+    where: { slug: 'redmond-wetwork' },
+    update: {
+      name: 'Redmond Wetwork',
+      description: 'Track a Neon Razor lieutenant through a secured hideout and remove them.',
+      baseDifficulty: 2,
+      basePayout: 3000,
+    },
+    create: {
+      slug: 'redmond-wetwork',
+      name: 'Redmond Wetwork',
+      type: 'ASSASSINATION',
+      description: 'Track a Neon Razor lieutenant through a secured hideout and remove them.',
+      baseDifficulty: 2,
+      basePayout: 3000,
+      requiredClasses: [],
+    },
+  });
+
   console.log('Seeding Mob templates...');
+
+  await prisma.mobTemplate.upsert({
+    where: { slug: 'mission-defector' },
+    update: {
+      name: 'Neon Razor Defector',
+      level: 1,
+      body: 1, agility: 1, dexterity: 1, strength: 1, logic: 1, intuition: 1, willpower: 1, charisma: 1,
+      maxHp: 20, maxAp: 4, armorValue: 0,
+      masteryCQC: 0, masteryPistol: 0, masteryRifle: 0, masteryAutomatic: 0,
+    },
+    create: {
+      slug: 'mission-defector',
+      name: 'Neon Razor Defector',
+      level: 1,
+      body: 1, agility: 1, dexterity: 1, strength: 1, logic: 1, intuition: 1, willpower: 1, charisma: 1,
+      maxHp: 20, maxAp: 4, armorValue: 0,
+      masteryCQC: 0, masteryPistol: 0, masteryRifle: 0, masteryAutomatic: 0,
+    },
+  });
 
   await prisma.mobTemplate.upsert({
     where: { slug: 'security-guard' },

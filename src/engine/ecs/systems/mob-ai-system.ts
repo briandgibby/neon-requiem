@@ -17,6 +17,7 @@ import {
 } from '../components';
 import { RoomLookup, SafeZonePolicy } from '../../../domains/world/world.types';
 import { RoomEventPublisher } from '../../room-event-publisher';
+import { CharacterUpdatePublisher } from '../../character-update-publisher';
 
 interface MobAiWorldPolicy extends SafeZonePolicy, RoomLookup {}
 type MobAiRoom = Awaited<ReturnType<RoomLookup['getRoom']>>;
@@ -33,6 +34,7 @@ export class MobAiSystem implements Tickable {
     private readonly moveDispatcher: MoveDispatcher,
     private readonly worldPolicy: MobAiWorldPolicy,
     private readonly roomEvents?: RoomEventPublisher,
+    private readonly characterUpdates?: CharacterUpdatePublisher,
   ) {}
 
   async onTick(_tickCount: number): Promise<void> {
@@ -86,6 +88,7 @@ export class MobAiSystem implements Tickable {
           ? `${mobName} attacks ${targetName} for ${damage} damage.`
           : `${mobName} attacks ${targetName}, but ${this.getEntityName(attackTargetId, 'a body guard')} intercepts the blow for ${damage} damage.`;
         this.publishRoomEvent(position.roomId, { text, type: 'combat' });
+        this.publishCharacterHealth(attackTargetId);
       } catch (_err) {
         this.startRecoveryIfSpent(status, mobId);
         // AI action failures should not stop the rest of the heartbeat.
@@ -281,6 +284,21 @@ export class MobAiSystem implements Tickable {
   private publishRoomEvent(roomId: string, event: { text: string; type: 'info' | 'combat' }): void {
     try {
       this.roomEvents?.publish(roomId, event);
+    } catch (_err) {
+      // Realtime output must not interrupt autonomous actions.
+    }
+  }
+
+  private publishCharacterHealth(entityId: EntityId): void {
+    const player = this.registry.getComponent<PlayerIdComponent>(entityId, ComponentTypes.PlayerId);
+    const health = this.registry.getComponent<HealthComponent>(entityId, ComponentTypes.Health);
+    if (!player || !health) return;
+
+    try {
+      this.characterUpdates?.publish(player.characterId, {
+        currentHp: health.current,
+        maxHp: health.max,
+      });
     } catch (_err) {
       // Realtime output must not interrupt autonomous actions.
     }
