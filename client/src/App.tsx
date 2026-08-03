@@ -1,11 +1,26 @@
-import { useState } from 'react';
+import { lazy, Suspense, useState } from 'react';
 import { useAuth } from './hooks/useAuth';
 import { AuthView } from './views/AuthView';
-import { GameView } from './views/GameView';
 import { CharacterView } from './views/CharacterView';
-import { AdminSnapshotView } from './views/AdminSnapshotView';
 import { Loader2 } from 'lucide-react';
 import type { Character } from './types';
+
+const GameView = lazy(() =>
+  import('./views/GameView').then(({ GameView }) => ({ default: GameView })),
+);
+const AdminSnapshotView = lazy(() =>
+  import('./views/AdminSnapshotView').then(({ AdminSnapshotView }) => ({
+    default: AdminSnapshotView,
+  })),
+);
+
+function LoadingView() {
+  return (
+    <div className="h-screen w-screen bg-[#020402] flex items-center justify-center text-[#00ff41]">
+      <Loader2 className="animate-spin" size={48} />
+    </div>
+  );
+}
 
 function App() {
   const { token, user, login, register, logout, isLoading } = useAuth();
@@ -13,11 +28,7 @@ function App() {
   const [showAdmin, setShowAdmin] = useState(false);
 
   if (isLoading) {
-    return (
-      <div className="h-screen w-screen bg-[#020402] flex items-center justify-center text-[#00ff41]">
-        <Loader2 className="animate-spin" size={48} />
-      </div>
-    );
+    return <LoadingView />;
   }
 
   if (!token || !user) {
@@ -26,14 +37,16 @@ function App() {
 
   if (showAdmin && user.isAdmin) {
     return (
-      <AdminSnapshotView
-        token={token}
-        onBack={() => setShowAdmin(false)}
-        onLogout={() => {
-          setShowAdmin(false);
-          logout();
-        }}
-      />
+      <Suspense fallback={<LoadingView />}>
+        <AdminSnapshotView
+          token={token}
+          onBack={() => setShowAdmin(false)}
+          onLogout={() => {
+            setShowAdmin(false);
+            logout();
+          }}
+        />
+      </Suspense>
     );
   }
 
@@ -50,15 +63,17 @@ function App() {
   }
 
   return (
-    <GameView 
-      key={`${selectedCharacter.id}:${token}`}
-      token={token}
-      character={selectedCharacter} 
-      onLogout={() => {
-        setSelectedCharacter(null);
-        logout();
-      }} 
-    />
+    <Suspense fallback={<LoadingView />}>
+      <GameView
+        key={`${selectedCharacter.id}:${token}`}
+        token={token}
+        character={selectedCharacter}
+        onLogout={() => {
+          setSelectedCharacter(null);
+          logout();
+        }}
+      />
+    </Suspense>
   );
 }
 
