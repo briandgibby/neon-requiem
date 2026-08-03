@@ -1,7 +1,7 @@
 import { EcsRegistry } from '../../src/engine/ecs/registry';
 import { MoveDispatcher } from '../../src/engine/ecs/combat/move-dispatcher';
 import { AttackExecutor } from '../../src/engine/ecs/combat/moves/attack-executor';
-import { ComponentTypes, HealthComponent, ApComponent } from '../../src/engine/ecs/components';
+import { ComponentTypes, HealthComponent, ApComponent, CombatStatusComponent } from '../../src/engine/ecs/components';
 import { MobFactory } from '../../src/engine/ecs/factories/mob-factory';
 
 describe('Combat ECS', () => {
@@ -41,6 +41,9 @@ describe('Combat ECS', () => {
 
     const ap = registry.getComponent<ApComponent>(actorId, ComponentTypes.Ap);
     expect(ap?.current).toBe(6 - 4); // MAX_AP (6) - Cost (4)
+    const status = registry.getComponent<CombatStatusComponent>(actorId, ComponentTypes.CombatStatus);
+    expect(status?.state).toBe('recovering');
+    expect(ap?.recoveryTicks).toBe(5);
 
     const health = registry.getComponent<HealthComponent>(targetId, ComponentTypes.Health);
     expect(health?.current).toBeLessThan(100);
@@ -62,5 +65,20 @@ describe('Combat ECS', () => {
     const context = { registry };
     await expect(dispatcher.dispatch('attack', actorId, targetId, context))
       .rejects.toThrow('Not enough Action Points');
+  });
+
+  it('rejects combat actions from an incapacitated actor', async () => {
+    const template: any = {
+      name: 'Mob', slug: 'mob', level: 1, maxHp: 100,
+      body: 5, agility: 5, dexterity: 5, strength: 5,
+      armorValue: 0, masteryCQC: 5, masteryPistol: 0, masteryRifle: 0, masteryAutomatic: 0,
+    };
+    const actorId = MobFactory.createFromTemplate(registry, template, 'room-1');
+    const targetId = MobFactory.createFromTemplate(registry, template, 'room-1');
+    const actorHealth = registry.getComponent<HealthComponent>(actorId, ComponentTypes.Health);
+    actorHealth!.current = 0;
+
+    await expect(dispatcher.dispatch('attack', actorId, targetId, { registry }))
+      .rejects.toThrow('Incapacitated entities cannot act');
   });
 });

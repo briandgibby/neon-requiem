@@ -145,20 +145,20 @@ describeWithDatabase('playable Mission loop database integration', () => {
         requiredClasses: [],
       },
     });
-    const existingMobTemplate = await db.mobTemplate.findUnique({ where: { slug: 'security-guard' } });
+    const existingMobTemplate = await db.mobTemplate.findUnique({ where: { slug: 'mission-defector' } });
     if (!existingMobTemplate) {
       await db.mobTemplate.create({
         data: {
-        slug: 'security-guard',
-        name: 'Marked Guard',
-        body: 1,
-        agility: 1,
-        dexterity: 1,
-        strength: 1,
-        logic: 1,
-        intuition: 1,
-        willpower: 1,
-        charisma: 1,
+          slug: 'mission-defector',
+          name: 'Marked Defector',
+          body: 1,
+          agility: 1,
+          dexterity: 1,
+          strength: 1,
+          logic: 1,
+          intuition: 1,
+          willpower: 1,
+          charisma: 1,
           maxHp: 20,
         },
       });
@@ -192,7 +192,7 @@ describeWithDatabase('playable Mission loop database integration', () => {
     await db.room.deleteMany({ where: { id: { in: fixedRoomIds } } });
     if (itemId) await db.item.deleteMany({ where: { id: itemId } });
     if (createdMobTemplate) {
-      await db.mobTemplate.deleteMany({ where: { slug: 'security-guard' } });
+      await db.mobTemplate.deleteMany({ where: { slug: 'mission-defector' } });
     }
     await db.missionTemplate.deleteMany({ where: { slug: `${runId}-wetwork` } });
     await db.zone.deleteMany({

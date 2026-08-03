@@ -109,6 +109,8 @@ export const GameView: React.FC<GameViewProps> = ({ token, character, onLogout }
   const [combatTargets, setCombatTargets] = useState<CombatTargets>({ hostiles: [], allies: [] });
   const [missionTemplates, setMissionTemplates] = useState<MissionTemplate[]>([]);
   const [shopItems, setShopItems] = useState<ShopItem[]>([]);
+  const currentAp = charData.currentAp ?? 6;
+  const maxAp = charData.maxAp ?? 6;
   const terminalRef = useRef<TerminalHandle>(null);
   const {
     hotkeys,
@@ -652,11 +654,16 @@ export const GameView: React.FC<GameViewProps> = ({ token, character, onLogout }
           <div className="space-y-2">
             <div className="flex justify-between text-[10px] tracking-widest text-[#00ff41]/80 font-bold">
               <span>ACTION POOL</span>
-              <span>6/6</span>
+              <span>{currentAp}/{maxAp}</span>
             </div>
             <div className="flex gap-2">
-              {[1, 2, 3, 4, 5, 6].map(pip => (
-                <div key={pip} className="w-4 h-4 bg-orange-500 border border-orange-400/50 shadow-[0_0_8px_rgba(249,115,22,0.4)]" />
+              {Array.from({ length: maxAp }, (_, index) => index + 1).map(pip => (
+                <div
+                  key={pip}
+                  className={`w-4 h-4 border ${pip <= currentAp
+                    ? 'bg-orange-500 border-orange-400/50 shadow-[0_0_8px_rgba(249,115,22,0.4)]'
+                    : 'bg-orange-950/20 border-orange-500/20'}`}
+                />
               ))}
             </div>
           </div>

@@ -1,13 +1,17 @@
 import { EcsRegistry } from '../registry';
 import { Tickable } from '../../heartbeat';
-import { ComponentTypes, CombatSessionComponent, ApComponent, CombatStatusComponent } from '../components';
+import { ComponentTypes, CombatSessionComponent, ApComponent, CombatStatusComponent, PlayerIdComponent } from '../components';
 import { COMMAND_AP_PENALTY } from '../../../shared/constants';
+import { CharacterUpdatePublisher } from '../../character-update-publisher';
 
 export class CombatTickSystem implements Tickable {
   readonly name = 'ecs_combat_tick_system';
   readonly frequency = 1; // Ticks every heartbeat
 
-  constructor(private readonly registry: EcsRegistry) {}
+  constructor(
+    private readonly registry: EcsRegistry,
+    private readonly characterUpdates?: CharacterUpdatePublisher,
+  ) {}
 
   async onTick(_tickCount: number): Promise<void> {
     this.updateSessions();
@@ -47,6 +51,17 @@ export class CombatTickSystem implements Tickable {
           ap.current = ap.max;
           if (status.isPetActive) {
             ap.current -= COMMAND_AP_PENALTY;
+          }
+          const player = this.registry.getComponent<PlayerIdComponent>(entityId, ComponentTypes.PlayerId);
+          if (player) {
+            try {
+              this.characterUpdates?.publish(player.characterId, {
+                currentAp: ap.current,
+                maxAp: ap.max,
+              });
+            } catch (_err) {
+              // Realtime output must not interrupt combat recovery.
+            }
           }
         }
       }

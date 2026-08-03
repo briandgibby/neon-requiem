@@ -54,7 +54,7 @@ export class MissionGenerator {
       });
       spawnData.push({
         npcId: targetId,
-        templateSlug: 'security-guard', // Generic for now
+        templateSlug: 'mission-defector',
         roomSlug: targetRoom,
         isTarget: true,
         objectiveIndex: objectives.length - 1

@@ -16,6 +16,7 @@ import {
   CombatStatusComponent,
   PlayerIdComponent,
   AiComponent,
+  ApComponent,
   DeckerComponent,
   HealthComponent,
   IdentityComponent,
@@ -222,6 +223,21 @@ export class CombatService implements Tickable {
     );
 
     await this.syncCoordinator.syncAllPlayers();
-    return result;
+    const health = this.ecsRegistry.getComponent<HealthComponent>(actorId, ComponentTypes.Health);
+    const ap = this.ecsRegistry.getComponent<ApComponent>(actorId, ComponentTypes.Ap);
+    return {
+      ...result,
+      data: {
+        ...result.data,
+        ...(health && ap ? {
+          actorState: {
+            currentHp: health.current,
+            maxHp: health.max,
+            currentAp: ap.current,
+            maxAp: ap.max,
+          },
+        } : {}),
+      },
+    };
   }
 }

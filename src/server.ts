@@ -30,6 +30,7 @@ import { PlayerSyncCoordinator } from './engine/player-sync-coordinator';
 import { PlayerRuntime } from './engine/player-runtime';
 import { SocketHub } from './engine/socket-hub';
 import { RoomEventPublisher } from './engine/room-event-publisher';
+import { CharacterUpdatePublisher } from './engine/character-update-publisher';
 import { CommandDispatcher } from './engine/command-dispatcher';
 import { CommandRegistry } from './engine/command-registry';
 import { registerCommandRoutes } from './engine/command.routes';
@@ -216,15 +217,21 @@ async function bootstrap() {
   const roomEvents: RoomEventPublisher = {
     publish: (roomId, event) => socketHub.emitToRoom(roomId, 'message', event),
   };
+  const characterUpdates: CharacterUpdatePublisher = {
+    publish: (characterId, update) => {
+      const client = socketHub.findCharacterById(characterId);
+      if (client) socketHub.sendToSocket(client.socketId, 'character_update', update);
+    },
+  };
 
   // Register Heartbeat subscribers
   heartbeat.subscribe(combatService);
   heartbeat.subscribe(new SecurityPatrol(db, combatService, app.log));
   heartbeat.subscribe(new RegenSystem(ecsRegistry));
-  heartbeat.subscribe(new CombatTickSystem(ecsRegistry));
+  heartbeat.subscribe(new CombatTickSystem(ecsRegistry, characterUpdates));
   heartbeat.subscribe(new CombatReinforcementSystem(ecsRegistry, combatService, worldService));
   heartbeat.subscribe(new AlertPatrolSystem(ecsRegistry, worldService, app.log, instanceAlerts, roomEvents));
-  heartbeat.subscribe(new MobAiSystem(ecsRegistry, moveDispatcher, worldService, roomEvents));
+  heartbeat.subscribe(new MobAiSystem(ecsRegistry, moveDispatcher, worldService, roomEvents, characterUpdates));
   heartbeat.subscribe(new MatrixTickSystem(ecsRegistry, matrixRepo, instanceAlerts));
   heartbeat.subscribe(new IceAiSystem(ecsRegistry));
   heartbeat.subscribe(new MissionSystem(ecsRegistry, (missionId, index) => missionService.updateObjectiveProgress(missionId, index)));

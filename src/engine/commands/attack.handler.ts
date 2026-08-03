@@ -32,6 +32,9 @@ export class AttackHandler implements CommandHandler {
       move: 'attack',
     });
     context.message(result.message, result.success ? 'combat' : 'error');
+    if (result.data?.actorState) {
+      context.output.emit('character_update', result.data.actorState);
+    }
     context.output.emit('combat_targets', await this.combatService.listTargets(context.characterId, context.accountId));
   }
 }

@@ -32,5 +32,8 @@ export class GuardHandler implements CommandHandler {
       move: 'guard',
     });
     context.message(result.message, result.success ? 'success' : 'error');
+    if (result.data?.actorState) {
+      context.output.emit('character_update', result.data.actorState);
+    }
   }
 }

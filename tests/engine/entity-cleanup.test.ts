@@ -1,6 +1,6 @@
 import { EcsRegistry } from '../../src/engine/ecs/registry';
 import { EntityCleanupSystem } from '../../src/engine/ecs/systems/entity-cleanup-system';
-import { ComponentTypes, HealthComponent, NpcIdComponent, CombatSessionComponent, CombatStatusComponent, MatrixNodeComponent, DeckerComponent, IceComponent, PositionComponent } from '../../src/engine/ecs/components';
+import { ComponentTypes, HealthComponent, NpcIdComponent, CombatSessionComponent, CombatStatusComponent, MatrixNodeComponent, DeckerComponent, IceComponent, PositionComponent, MissionTargetComponent } from '../../src/engine/ecs/components';
 
 describe('EntityCleanupSystem', () => {
   let registry: EcsRegistry;
@@ -18,6 +18,26 @@ describe('EntityCleanupSystem', () => {
 
     expect(registry.entityCount).toBe(1);
     await system.onTick(20);
+    expect(registry.entityCount).toBe(0);
+  });
+
+  it('keeps dead mission targets until objective completion is recorded', async () => {
+    const npcId = registry.createEntity();
+    registry.addComponent<NpcIdComponent>(npcId, ComponentTypes.NpcId, { mobId: 'mob-1' });
+    registry.addComponent<HealthComponent>(npcId, ComponentTypes.Health, { current: 0, max: 10, lastRegenAt: 0 });
+    registry.addComponent<MissionTargetComponent>(npcId, ComponentTypes.MissionTarget, {
+      missionId: 'mission-1',
+      objectiveIndex: 0,
+      goalType: 'KILL',
+      isCompleted: false,
+    });
+
+    await system.onTick(20);
+
+    expect(registry.entityCount).toBe(1);
+
+    registry.getComponent<MissionTargetComponent>(npcId, ComponentTypes.MissionTarget)!.isCompleted = true;
+    await system.onTick(40);
     expect(registry.entityCount).toBe(0);
   });
 
